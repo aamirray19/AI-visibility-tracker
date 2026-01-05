@@ -12,7 +12,7 @@ A comprehensive analytics platform that tracks how AI models (ChatGPT, Gemini, P
 
 1. **Clone the repository**
 ```bash
-git clone <repository-url>
+git clone https://github.com/aamirray19/AI-visibility-tracker.git 
 cd ai-visible-tracker
 ```
 
