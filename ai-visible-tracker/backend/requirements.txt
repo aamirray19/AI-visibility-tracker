@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+litellm
+pydantic
+python-dotenv
+httpx
+sqlmodel
+asyncpg
+redis
+arq
+tenacity
+openai
