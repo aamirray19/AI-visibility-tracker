@@ -36,9 +36,9 @@ class CampaignResponse(BaseModel):
 
 # Advanced Dashboard Schemas
 class AdvancedMetrics(BaseModel):
-    ai_visibility: float          # % of prompts where brand mentioned
-    citation_share: float          # % of prompts with brand URLs
-    share_of_voice: float          # Same as ai_visibility (kept for compatibility)
+    ai_visibility: float          
+    citation_share: float          
+    share_of_voice: float          
     average_rank: float
     average_sentiment: float
     total_mentions: int
@@ -72,13 +72,11 @@ class EnhancedDashboardResponse(BaseModel):
     brand: str
     total_prompts: int
     processed_count: int
-    
-    # Advanced metrics
     metrics: AdvancedMetrics
     competitors: List[CompetitorStats]
     top_cited_pages: List[CitedPage]
-    mentioned_prompts: List[PromptResult]  # Filtered list where brand mentioned
-    results: List[PromptResult]  # All results
+    mentioned_prompts: List[PromptResult] 
+    results: List[PromptResult] 
 
 # --- Endpoints ---
 
@@ -95,27 +93,10 @@ async def create_campaign(
     request: CreateCampaignRequest,
     session: AsyncSession = Depends(get_session)
 ):
-    # 1. Check for existing recent campaign
-    query = select(Campaign).where(
-        Campaign.brand_name == request.brand,
-        Campaign.category == request.category,
-        Campaign.created_at >= datetime.utcnow() - timedelta(hours=24)
-    )
-    result = await session.exec(query)
-    existing_campaign = result.first()
-    
-    if existing_campaign:
-        return CampaignResponse(
-            id=existing_campaign.id,
-            brand=existing_campaign.brand_name,
-            status="EXISTING",
-            prompt_count=100 
-        )
-
-    # 2. Generate Prompts
+    # 1. Generate Prompts
     prompts_data = await generate_campaign_prompts(request.brand, request.category)
     
-    # 3. Save to DB
+    # 2. Save to DB
     new_campaign = Campaign(brand_name=request.brand, category=request.category)
     session.add(new_campaign)
     await session.commit()
@@ -142,7 +123,7 @@ async def create_campaign(
     
     await session.commit()
 
-    # 4. Enqueue Jobs
+    # 3. Enqueue Jobs
     try:
         redis = await create_pool(redis_settings)
         for p in created_prompts:
@@ -164,17 +145,17 @@ async def get_campaign_dashboard(
     campaign_id: int,
     session: AsyncSession = Depends(get_session)
 ):
-    # Fetch campaign
+    # 1. Fetch campaign
     campaign = await session.get(Campaign, campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
         
-    # Fetch prompts
+    # 2. Fetch prompts
     statement = select(Prompt).where(Prompt.campaign_id == campaign_id)
     results = await session.exec(statement)
     prompts = results.all()
     
-    # Fetch all results for this campaign
+    # 3. Fetch all results for this campaign
     result_ids = []
     dashboard_results = []
     mentioned_prompts = []

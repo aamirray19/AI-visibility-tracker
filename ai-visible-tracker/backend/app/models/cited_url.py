@@ -10,9 +10,7 @@ class CitedUrl(SQLModel, table=True):
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     result_id: Optional[int] = Field(default=None, foreign_key="result.id")
-    
-    url: str = Field(sa_column=Column(Text))  # Full URL
-    domain: str = Field(default="unknown")  # Extracted domain with safe default
-    is_target_brand: bool = Field(default=False)  # Does this URL belong to target brand?
-    
+    url: str = Field(sa_column=Column(Text))  
+    domain: str = Field(default="unknown")  
+    is_target_brand: bool = Field(default=False)  
     created_at: datetime = Field(default_factory=datetime.utcnow)

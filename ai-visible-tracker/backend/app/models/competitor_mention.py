@@ -10,8 +10,8 @@ class CompetitorMention(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     result_id: Optional[int] = Field(default=None, foreign_key="result.id")
     
-    brand_name: str  # Name of competitor brand
-    rank: Optional[int] = Field(default=None)  # Position in response (1=first, 2=second, etc.)
-    sentiment_score: Optional[float] = None  # 0.0 to 1.0
+    brand_name: str  
+    rank: Optional[int] = Field(default=None) 
+    sentiment_score: Optional[float] = None 
     
     created_at: datetime = Field(default_factory=datetime.utcnow)

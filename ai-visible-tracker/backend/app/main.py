@@ -25,10 +25,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create screenshots dir if not exists
-os.makedirs("/app/screenshots", exist_ok=True)
-app.mount("/screenshots", StaticFiles(directory="/app/screenshots"), name="screenshots")
-
 @app.on_event("startup")
 async def on_startup():
     await init_db()

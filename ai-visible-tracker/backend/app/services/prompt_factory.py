@@ -72,7 +72,7 @@ async def generate_campaign_prompts(brand: str, category: str) -> list[dict]:
     5. Avoid duplicates or near-duplicates.
     Each prompt must be meaningfully different.
 
-    6. Return ONLY a raw JSON array.
+    6. Return ONLY a JSON object.
     - No explanations
     - No headings
     - No markdown

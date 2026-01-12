@@ -14,6 +14,5 @@ class Prompt(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     campaign_id: Optional[int] = Field(default=None, foreign_key="campaign.id")
     text: str
-    intent_type: str  # commercial | informational
-    
+    intent_type: str  
     campaign: Optional[Campaign] = Relationship(back_populates="prompts")

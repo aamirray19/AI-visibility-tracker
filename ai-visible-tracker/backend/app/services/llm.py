@@ -10,7 +10,6 @@ async def generate_brand_list(category: str) -> list[str]:
     prompt = f"""
     List the top 15 most prominent companies/brands in the product category: "{category}".
     Return ONLY a raw JSON array of strings. Do not include markdown formatting or explanation.
-    Example: ["Nike", "Adidas", "Puma"]
     """
 
     try:
