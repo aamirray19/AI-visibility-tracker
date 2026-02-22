@@ -1,21 +1,18 @@
 import asyncio
 from arq import Worker
 from app.core.queue import redis_settings
-from app.core.db import engine
+from app.core.db import async_session_factory
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy.orm import sessionmaker
 from app.models.campaign import Prompt
 from sqlmodel import select
 
 async def startup(ctx):
     print("Worker starting up...")
-    # Initialize DB session factory for worker
-    ctx["session_factory"] = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
+    ctx["session_factory"] = async_session_factory
 
 async def shutdown(ctx):
     print("Worker shutting down...")
+
 
 # from app.services.crawler import Crawler # Deprecated
 from app.services.executor import Executor
