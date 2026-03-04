@@ -12,10 +12,9 @@ interface CompetitorStats {
 
 interface CompetitorLeaderboardProps {
     competitors: CompetitorStats[];
-    targetBrand: string;
 }
 
-export default function CompetitorLeaderboard({ competitors, targetBrand }: CompetitorLeaderboardProps) {
+export default function CompetitorLeaderboard({ competitors }: CompetitorLeaderboardProps) {
     if (competitors.length === 0) {
         return null;
     }
@@ -77,11 +76,6 @@ export default function CompetitorLeaderboard({ competitors, targetBrand }: Comp
                 ))}
             </div>
 
-            {competitors.length === 0 && (
-                <div className="text-center py-8 text-slate-400">
-                    <p>No competitors detected in responses</p>
-                </div>
-            )}
         </motion.div>
     );
 }

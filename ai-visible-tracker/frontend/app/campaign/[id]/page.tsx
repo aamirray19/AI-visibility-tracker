@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { CheckCircle, Clock, Activity, Zap, Filter } from "lucide-react";
 import { clsx } from "clsx";
@@ -64,6 +64,7 @@ export default function CampaignDashboardPage() {
     const [selectedResponse, setSelectedResponse] = useState<string | null>(null);
     const [showOnlyMentions, setShowOnlyMentions] = useState(false);
     const [recentActivity, setRecentActivity] = useState<PromptResult[]>([]);
+    const previousResultsRef = useRef<PromptResult[]>([]);
 
     // Poll for updates every 3 seconds
     useEffect(() => {
@@ -74,16 +75,16 @@ export default function CampaignDashboardPage() {
                     const json = await res.json();
 
                     // Track newly completed items for activity feed
-                    if (data) {
-                        const newCompleted = json.results.filter((r: PromptResult) =>
-                            r.status === "COMPLETED" &&
-                            !data.results.find(old => old.id === r.id && old.status === "COMPLETED")
-                        );
-                        if (newCompleted.length > 0) {
-                            setRecentActivity(prev => [...newCompleted.slice(0, 3), ...prev].slice(0, 5));
-                        }
+                    const previousResults = previousResultsRef.current;
+                    const newCompleted = json.results.filter((r: PromptResult) =>
+                        r.status === "COMPLETED" &&
+                        !previousResults.find(old => old.id === r.id && old.status === "COMPLETED")
+                    );
+                    if (newCompleted.length > 0) {
+                        setRecentActivity(prev => [...newCompleted.slice(0, 3), ...prev].slice(0, 5));
                     }
 
+                    previousResultsRef.current = json.results;
                     setData(json);
                 }
             } catch (error) {
@@ -96,7 +97,7 @@ export default function CampaignDashboardPage() {
         fetchData();
         const interval = setInterval(fetchData, 3000);
         return () => clearInterval(interval);
-    }, [params.id, data]);
+    }, [params.id]);
 
     if (loading && !data) return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -194,7 +195,6 @@ export default function CampaignDashboardPage() {
                 {data.competitors.length > 0 && (
                     <CompetitorLeaderboard
                         competitors={data.competitors}
-                        targetBrand={data.brand}
                     />
                 )}
 

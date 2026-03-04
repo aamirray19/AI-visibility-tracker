@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Search, Loader2, Sparkles, TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { clsx } from "clsx";
 
 interface CategoryInputProps {
     onDiscover: (category: string) => void;
@@ -130,7 +130,7 @@ export default function CategoryInput({ onDiscover, isLoading }: CategoryInputPr
                                         <button
                                             type="submit"
                                             disabled={isLoading || !category.trim()}
-                                            className={cn(
+                                            className={clsx(
                                                 "absolute right-2 px-8 py-3 rounded-xl font-bold transition-all duration-300 flex items-center gap-2",
                                                 isLoading || !category.trim()
                                                     ? "bg-slate-200 text-slate-400 cursor-not-allowed"
