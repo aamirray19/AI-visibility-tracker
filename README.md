@@ -7,6 +7,7 @@ A comprehensive analytics platform that tracks how AI models (ChatGPT, Gemini, P
 ### Prerequisites
 - Docker & Docker Compose
 - Groq API Key ([Get one free](https://console.groq.com))
+- Google AI Studio API Key ([Get one](https://aistudio.google.com/app/apikey))
 
 ### Setup
 
@@ -20,6 +21,7 @@ cd ai-visible-tracker
 ```bash
 # Create .env file in project root
 echo "GROQ_API_KEY=your_groq_api_key_here" > .env
+echo "GOOGLE_API_KEY=your_google_ai_studio_api_key_here" >> .env
 ```
 
 3. **Start the application**
@@ -64,14 +66,14 @@ docker-compose up --build -d
 ### Tech Stack
 - **Backend**: FastAPI + SQLModel + AsyncPG
 - **Frontend**: Next.js 14 + TailwindCSS + Framer Motion
-- **AI Models**: Groq (Llama 3.3 70B) for all LLM operations
+- **AI Models**: Groq GPT-OSS 120B + Google AI Studio Gemma 3 27B (both with built-in web search)
 - **Queue**: Redis + ARQ for background jobs
 - **Database**: PostgreSQL 15
 
 ### System Flow
 ```
 User Input → Brand Discovery (Groq) → Prompt Generation (Groq) 
-→ Queue Jobs → Worker Processes → AI Execution (Groq) 
+→ Queue Jobs → Worker Processes → AI Execution (Groq GPT-OSS 120B + Google Gemma 3 27B with web search) 
 → Analysis (Groq) → Database → Real-time Dashboard
 ```
 
@@ -79,8 +81,8 @@ User Input → Brand Discovery (Groq) → Prompt Generation (Groq)
 
 ## 🎯 Key Design Decisions
 
-### 1. **Groq Over OpenAI/Gemini**
-**Decision**: Use Groq's Llama 3.3 70B for all LLM operations
+### 1. **Dual Model Monitoring**
+**Decision**: Run each prompt against Groq GPT-OSS 120B and Google Gemma 3 27B using inbuilt web search
 
 **Rationale**:
 - **14,400 requests/day** free tier (vs Gemini's 20/day)
@@ -89,7 +91,7 @@ User Input → Brand Discovery (Groq) → Prompt Generation (Groq)
 - **No quota headaches** during development
 - Cost-effective for production scaling
 
-**Trade-offs**: Slightly less sophisticated than GPT-4, but excellent for structured outputs
+**Trade-offs**: Higher request volume and more API key management, but much richer cross-model visibility data
 
 **Location**: `backend/app/services/executor.py`, `analyzer.py`, `llm.py`, `prompt_factory.py`
 
@@ -215,8 +217,8 @@ ai-visible-tracker/
 
 ### Prompts not generating
 ```bash
-# Check if GROQ_API_KEY is set
-docker-compose exec backend python -c "import os; print(os.getenv('GROQ_API_KEY'))"
+# Check if API keys are set
+docker-compose exec backend python -c "import os; print(os.getenv('GROQ_API_KEY'), os.getenv('GOOGLE_API_KEY'))"
 
 # Restart backend
 docker-compose restart backend worker

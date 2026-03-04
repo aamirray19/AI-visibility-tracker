@@ -10,6 +10,7 @@ from app.models.cited_url import CitedUrl
 from app.models.competitor_mention import CompetitorMention
 from app.services.llm import generate_brand_list
 from app.services.prompt_factory import generate_campaign_prompts
+from app.services.executor import SUPPORTED_PLATFORMS
 from datetime import datetime, timedelta
 from arq import create_pool
 from app.core.queue import redis_settings
@@ -165,47 +166,57 @@ async def get_campaign_dashboard(
     mentions_count = 0
     total_sentiment = 0
     sentiment_count = 0
-    
+
     for prompt in prompts:
         r_stmt = select(Result).where(Result.prompt_id == prompt.id).order_by(Result.created_at.desc())
         r_res = await session.exec(r_stmt)
-        result = r_res.first()
-        
-        p_res = PromptResult(
-            id=prompt.id,
-            text=prompt.text,
-            intent=prompt.intent_type,
-            status="PENDING",
-            rank=None,
-            sentiment=None,
-            response_text=None,
-            platform=None
-        )
-        
-        if result:
-            result_ids.append(result.id)
-            p_res.status = "COMPLETED"
-            processed_count += 1
-            p_res.rank = result.rank
-            p_res.sentiment = result.sentiment_score
-            p_res.response_text = result.response_text
-            p_res.platform = result.platform
-            
-            if result.rank and result.rank > 0:
-                total_rank += result.rank
-                ranked_count += 1
-                mentions_count += 1
-                mentioned_prompts.append(p_res)
-            
-            if result.sentiment_score is not None:
-                total_sentiment += result.sentiment_score
-                sentiment_count += 1
-                
-        dashboard_results.append(p_res)
+        prompt_results = r_res.all()
+        prompt_results_by_platform = {r.platform: r for r in prompt_results}
+
+        for platform in SUPPORTED_PLATFORMS:
+            result = prompt_results_by_platform.get(platform)
+
+            if result:
+                result_ids.append(result.id)
+                processed_count += 1
+                p_res = PromptResult(
+                    id=result.id,
+                    text=prompt.text,
+                    intent=prompt.intent_type,
+                    status="COMPLETED",
+                    rank=result.rank,
+                    sentiment=result.sentiment_score,
+                    response_text=result.response_text,
+                    platform=result.platform
+                )
+
+                if result.rank and result.rank > 0:
+                    total_rank += result.rank
+                    ranked_count += 1
+                    mentions_count += 1
+                    mentioned_prompts.append(p_res)
+
+                if result.sentiment_score is not None:
+                    total_sentiment += result.sentiment_score
+                    sentiment_count += 1
+            else:
+                p_res = PromptResult(
+                    id=(prompt.id * 1000) + SUPPORTED_PLATFORMS.index(platform),
+                    text=prompt.text,
+                    intent=prompt.intent_type,
+                    status="PENDING",
+                    rank=None,
+                    sentiment=None,
+                    response_text=None,
+                    platform=platform
+                )
+
+            dashboard_results.append(p_res)
     
     # Calculate basic metrics
     avg_rank = total_rank / ranked_count if ranked_count > 0 else 0
-    ai_visibility = (mentions_count / len(prompts)) * 100 if prompts else 0
+    expected_results = len(prompts) * len(SUPPORTED_PLATFORMS)
+    ai_visibility = (mentions_count / expected_results) * 100 if expected_results else 0
     avg_sentiment = total_sentiment / sentiment_count if sentiment_count > 0 else 0
     
     # Calculate Citation Share
@@ -219,7 +230,7 @@ async def get_campaign_dashboard(
     else:
         citation_count = 0
     
-    citation_share = (citation_count / len(prompts)) * 100 if prompts else 0
+    citation_share = (citation_count / expected_results) * 100 if expected_results else 0
     
     # Get Competitor Stats
     competitor_stats_dict = {}
@@ -248,7 +259,7 @@ async def get_campaign_dashboard(
     for brand, stats in competitor_stats_dict.items():
         avg_comp_rank = sum(stats["ranks"]) / len(stats["ranks"]) if stats["ranks"] else 0
         avg_comp_sentiment = sum(stats["sentiments"]) / len(stats["sentiments"]) if stats["sentiments"] else 0
-        comp_visibility = (stats["count"] / len(prompts)) * 100
+        comp_visibility = (stats["count"] / expected_results) * 100 if expected_results else 0
         
         competitors.append(CompetitorStats(
             name=brand,
@@ -304,7 +315,7 @@ async def get_campaign_dashboard(
     return EnhancedDashboardResponse(
         id=campaign.id,
         brand=campaign.brand_name,
-        total_prompts=len(prompts),
+        total_prompts=expected_results,
         processed_count=processed_count,
         metrics=metrics,
         competitors=competitors,
