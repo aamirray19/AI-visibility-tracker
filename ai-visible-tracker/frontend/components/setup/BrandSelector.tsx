@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { CheckCircle, Building2, ArrowRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 import { useState } from "react";
 
 interface BrandSelectorProps {
@@ -97,9 +98,11 @@ export default function BrandSelector({
                                 {/* Logo */}
                                 <div className="flex-shrink-0 w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-slate-700">
                                     {!hasImageError ? (
-                                        <img
+                                        <Image
                                             src={getLogoUrl(brand)}
                                             alt={`${brand} logo`}
+                                            width={64}
+                                            height={64}
                                             className="w-full h-full object-contain p-2"
                                             onError={() => handleImageError(brand)}
                                         />

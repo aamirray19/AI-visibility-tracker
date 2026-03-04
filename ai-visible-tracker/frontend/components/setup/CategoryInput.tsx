@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Search, Loader2, Sparkles, TrendingUp } from "lucide-react";
 import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 
 interface CategoryInputProps {
     onDiscover: (category: string) => void;

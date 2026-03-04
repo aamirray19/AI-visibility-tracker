@@ -12,10 +12,9 @@ interface CompetitorStats {
 
 interface CompetitorLeaderboardProps {
     competitors: CompetitorStats[];
-    targetBrand: string;
 }
 
-export default function CompetitorLeaderboard({ competitors, targetBrand }: CompetitorLeaderboardProps) {
+export default function CompetitorLeaderboard({ competitors }: CompetitorLeaderboardProps) {
     if (competitors.length === 0) {
         return null;
     }

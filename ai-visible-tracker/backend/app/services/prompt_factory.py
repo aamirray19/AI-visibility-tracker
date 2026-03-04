@@ -80,11 +80,13 @@ async def generate_campaign_prompts(brand: str, category: str) -> list[dict]:
 
     OUTPUT FORMAT (STRICT):
 
-    [
-        {{"text": "Best {category} software for mid-sized companies", "type": "commercial"}},
-        {{"text": "{brand} vs competitors pricing comparison", "type": "commercial"}},
-        {{"text": "How does {category} work?", "type": "informational"}}
-    ]
+    {
+        "prompts": [
+            {{"text": "Best {category} software for mid-sized companies", "type": "commercial"}},
+            {{"text": "{brand} vs competitors pricing comparison", "type": "commercial"}},
+            {{"text": "How does {category} work?", "type": "informational"}}
+        ]
+    }
     """
 
     try:
@@ -101,20 +103,14 @@ async def generate_campaign_prompts(brand: str, category: str) -> list[dict]:
         data = json.loads(content)
         
         # Extract prompts array from response
-        if isinstance(data, list):
-            prompts = data
-        elif isinstance(data, dict) and "prompts" in data:
+        if isinstance(data, dict) and "prompts" in data:
             prompts = data["prompts"]
+        elif isinstance(data, list):
+            prompts = data
         else:
-            # Try to find any array in the response
-            for value in data.values():
-                if isinstance(value, list):
-                    prompts = value
-                    break
-            else:
-                prompts = []
-        
-        return prompts
+            prompts = next((value for value in data.values() if isinstance(value, list)), []) if isinstance(data, dict) else []
+
+        return [p for p in prompts if isinstance(p, dict) and p.get("text")]
     except Exception as e:
         print(f"Error generating prompts: {e}")
         # Fallback simplistic generation if LLM fails completely

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { CheckCircle, Clock, Activity, Zap, Filter } from "lucide-react";
 import { clsx } from "clsx";
@@ -17,7 +17,7 @@ interface PromptResult {
     rank: number | null;
     sentiment: number | null;
     response_text: string | null;
-    platform: string;
+    platform: string | null;
 }
 
 interface AdvancedMetrics {
@@ -64,6 +64,7 @@ export default function CampaignDashboardPage() {
     const [selectedResponse, setSelectedResponse] = useState<string | null>(null);
     const [showOnlyMentions, setShowOnlyMentions] = useState(false);
     const [recentActivity, setRecentActivity] = useState<PromptResult[]>([]);
+    const previousCompletedIdsRef = useRef<Set<number>>(new Set());
 
     // Poll for updates every 3 seconds
     useEffect(() => {
@@ -73,17 +74,16 @@ export default function CampaignDashboardPage() {
                 if (res.ok) {
                     const json = await res.json();
 
-                    // Track newly completed items for activity feed
-                    if (data) {
-                        const newCompleted = json.results.filter((r: PromptResult) =>
-                            r.status === "COMPLETED" &&
-                            !data.results.find(old => old.id === r.id && old.status === "COMPLETED")
-                        );
-                        if (newCompleted.length > 0) {
-                            setRecentActivity(prev => [...newCompleted.slice(0, 3), ...prev].slice(0, 5));
-                        }
+                    const completedResults = json.results.filter((r: PromptResult) => r.status === "COMPLETED");
+                    const newCompleted = completedResults.filter(
+                        (r: PromptResult) => !previousCompletedIdsRef.current.has(r.id)
+                    );
+
+                    if (newCompleted.length > 0) {
+                        setRecentActivity(prev => [...newCompleted.slice(0, 3), ...prev].slice(0, 5));
                     }
 
+                    previousCompletedIdsRef.current = new Set(completedResults.map((r: PromptResult) => r.id));
                     setData(json);
                 }
             } catch (error) {
@@ -96,7 +96,7 @@ export default function CampaignDashboardPage() {
         fetchData();
         const interval = setInterval(fetchData, 3000);
         return () => clearInterval(interval);
-    }, [params.id, data]);
+    }, [params.id]);
 
     if (loading && !data) return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -194,7 +194,6 @@ export default function CampaignDashboardPage() {
                 {data.competitors.length > 0 && (
                     <CompetitorLeaderboard
                         competitors={data.competitors}
-                        targetBrand={data.brand}
                     />
                 )}
 
@@ -240,7 +239,7 @@ export default function CampaignDashboardPage() {
                                                     </span>
                                                 )}
                                                 <span className="text-xs text-indigo-600 font-semibold uppercase">
-                                                    {item.platform}
+                                                    {item.platform ?? "N/A"}
                                                 </span>
                                             </div>
                                         </div>
@@ -339,7 +338,7 @@ export default function CampaignDashboardPage() {
                                             )}
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className="uppercase text-xs font-bold text-slate-500">{result.platform}</span>
+                                            <span className="uppercase text-xs font-bold text-slate-500">{result.platform ?? "N/A"}</span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             {result.response_text ? (

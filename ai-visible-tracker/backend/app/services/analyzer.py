@@ -20,7 +20,7 @@ class Analyzer:
         try:
             parsed = urlparse(url)
             return parsed.netloc.replace('www.', '')
-        except:
+        except ValueError:
             return url
     
     async def analyze_result(self, text_content: str, brand_name: str) -> dict:
