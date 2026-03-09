@@ -2,6 +2,8 @@ import os
 import json
 from litellm import completion
 
+TARGET_COUNT = 100
+
 async def generate_campaign_prompts(brand: str, category: str) -> list[dict]:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
@@ -25,7 +27,7 @@ async def generate_campaign_prompts(brand: str, category: str) -> list[dict]:
     Commercial intent means the user is:
     - Comparing brands or vendors
     - Evaluating pricing, plans, or total cost
-    - Searching for “best”, “top”, or “alternatives”
+    - Searching for "best", "top", or "alternatives"
     - Asking whether a brand is worth buying or adopting
     - Looking for enterprise, SMB, or industry-specific solutions
     - Comparing {brand} against competitors in {category}
@@ -65,7 +67,7 @@ async def generate_campaign_prompts(brand: str, category: str) -> list[dict]:
 
     4. Prompts MUST sound like REAL user searches.
     - Natural language only
-    - No placeholders like “product X”
+    - No placeholders like "product X"
     - No marketing slogans
     - No unnatural phrasing
 
@@ -113,9 +115,26 @@ async def generate_campaign_prompts(brand: str, category: str) -> list[dict]:
                     break
             else:
                 prompts = []
-        
+
+        # --- Enforce exactly TARGET_COUNT prompts ---
+        # Trim if the LLM over-generated
+        if len(prompts) > TARGET_COUNT:
+            prompts = prompts[:TARGET_COUNT]
+
+        # Pad with generic commercial prompts if the LLM under-generated
+        if len(prompts) < TARGET_COUNT:
+            shortfall = TARGET_COUNT - len(prompts)
+            print(f"[prompt_factory] LLM returned {len(prompts)}/{TARGET_COUNT} prompts. Padding {shortfall} commercial prompts.")
+            padding = [
+                {"text": f"Best {category} platforms for businesses — option {i + 1}", "type": "commercial"}
+                for i in range(shortfall)
+            ]
+            prompts.extend(padding)
+
+        print(f"[prompt_factory] Final prompt count: {len(prompts)}")
         return prompts
+
     except Exception as e:
         print(f"Error generating prompts: {e}")
-        # Fallback simplistic generation if LLM fails completely
-        return [{"text": f"Review of {brand}", "type": "commercial"}] * 10
+        # Fallback: return exactly TARGET_COUNT generic prompts if LLM fails completely
+        return [{"text": f"Best {category} solutions for businesses — option {i + 1}", "type": "commercial"} for i in range(TARGET_COUNT)]
