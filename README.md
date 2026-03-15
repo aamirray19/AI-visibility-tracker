@@ -1,268 +1,235 @@
-# AI Campaign & Brand Visibility Tracker
+# AI Visibility Tracker
 
-A comprehensive analytics platform that tracks how AI models (ChatGPT, Gemini, Perplexity, etc.) mention and rank your brand across different search intents. Built with FastAPI, Next.js, and Groq AI.
+AI Visibility Tracker is a full-stack analytics platform for measuring how often a brand appears in AI-generated answers, how it ranks against competitors, and which URLs are cited as supporting sources.
 
-## 🚀 Quick Start
+It combines a Next.js frontend, a FastAPI backend, a Redis-backed ARQ worker, and PostgreSQL storage to run and analyze multi-model prompt campaigns.
+
+## Project Overview
+
+This project helps teams answer questions like:
+
+- Is our brand being mentioned by AI assistants for commercial and informational queries?
+- How visible are competitors in the same responses?
+- Which domains are cited most often, and are they ours?
+- How does performance differ by model/provider?
+
+A campaign starts from a category (for example, `CRM software`), discovers candidate brands, generates prompt sets, executes them across configured models, and returns an analytics dashboard with aggregate and per-result metrics.
+
+## Architecture Diagram
+![System Architecture](docs\assets\visibility.png)
+
+## Database Schema
+![Database Schema](docs\assets\db_schema.png)
+
+## Key Features And Capabilities
+
+### Campaign setup and orchestration
+
+- Brand discovery endpoint to generate category-specific candidate brands.
+- Prompt generation with configurable campaign volume (`PROMPT_TARGET_COUNT`) and enforced commercial/informational mix.
+- Campaign creation that persists prompts and enqueues one worker job per prompt.
+
+### Asynchronous execution pipeline
+
+- Redis + ARQ background processing to keep API latency low.
+- Parallel provider execution via a shared abstraction (`GroqProvider`, `GemmaProvider`).
+- Retry behavior and bounded worker concurrency for model calls and analysis tasks.
+
+### Response analysis and scoring
+
+- Structured extraction of target-brand mention, rank, sentiment, and mention context.
+- Competitor extraction with rank and sentiment per mention.
+- URL citation extraction and target-brand domain classification.
+
+### Dashboard and analytics
+
+- Aggregate metrics: AI visibility, citation share, share of voice, average rank, average sentiment.
+- Per-model metrics for side-by-side provider comparison.
+- Competitor leaderboard and top cited pages.
+- Detailed prompt/result drill-down with pagination.
+- Redis caching for completed dashboard responses (`DASHBOARD_CACHE_TTL_SECONDS`).
+
+### API safeguards
+
+- Optional bearer token guard for `/api/*` (`API_SECRET_KEY`).
+- Route-level rate limits (`slowapi`) on discovery, campaign creation, and dashboard reads.
+
+## High-Level System Architecture
+
+The system is split into five runtime layers:
+
+1. Frontend UI (`frontend/`): campaign setup and live dashboard polling.
+2. API layer (`backend/app/main.py`, `api/campaigns.py`): request validation, auth, rate limits, orchestration.
+3. Queue layer (`Redis` + `ARQ`): one job per prompt.
+4. Worker pipeline (`backend/app/worker.py`): model execution + response analysis + persistence.
+5. Data layer (`PostgreSQL` + `Redis`): normalized analytics storage and dashboard caching.
+
+Mermaid architecture diagram code is intentionally not embedded here (provided separately).
+
+## DB Schema
+
+## Detailed Directory And Codebase Structure
+
+```text
+AI-visibility-tracker/
+|-- docker-compose.yml                 # Orchestrates backend, worker, frontend, postgres, redis
+|-- backend/
+|   |-- Dockerfile
+|   |-- requirements.txt
+|   `-- app/
+|       |-- main.py                    # FastAPI app, CORS, auth dependency, health routes
+|       |-- worker.py                  # ARQ worker startup + process_prompt_job pipeline
+|       |-- api/
+|       |   `-- campaigns.py           # Campaign endpoints and dashboard aggregation logic
+|       |-- core/
+|       |   |-- config.py              # Pydantic settings + env loading
+|       |   |-- db.py                  # Async SQLAlchemy/SQLModel engine + session factory
+|       |   |-- limiter.py             # Global SlowAPI limiter
+|       |   `-- queue.py               # Redis settings for ARQ
+|       |-- models/
+|       |   |-- campaign.py            # Campaign and Prompt tables
+|       |   |-- result.py              # Raw model responses + analyzed target-brand fields
+|       |   |-- cited_url.py           # Extracted cited URLs per result
+|       |   `-- competitor_mention.py  # Competitor mentions per result
+|       `-- services/
+|           |-- llm.py                 # Brand discovery LLM call
+|           |-- prompt_factory.py      # Prompt set generation
+|           |-- executor.py            # Provider abstraction + parallel model execution
+|           `-- analyzer.py            # Structured analysis extraction from responses
+`-- frontend/
+    |-- Dockerfile
+    |-- package.json
+    |-- next.config.ts
+    |-- tsconfig.json
+    |-- postcss.config.mjs
+    |-- app/
+    |   |-- layout.tsx                 # Global layout + metadata
+    |   |-- page.tsx                   # Campaign setup flow (discover -> select -> create)
+    |   `-- campaign/[id]/page.tsx     # Live analytics dashboard page
+    |-- components/
+    |   |-- setup/
+    |   |   |-- CategoryInput.tsx      # Category input and discovery submit UI
+    |   |   `-- BrandSelector.tsx      # Brand selection + campaign creation UI
+    |   |-- dashboard/
+    |   |   |-- MetricsGrid.tsx
+    |   |   |-- ModelComparisonPanel.tsx
+    |   |   |-- CompetitorLeaderboard.tsx
+    |   |   `-- TopCitedPages.tsx
+    |   `-- ui/
+    |       `-- ErrorToast.tsx
+    `-- lib/
+        `-- utils.ts                   # `cn()` utility (clsx + tailwind-merge)
+```
+
+## Request/Processing Lifecycle
+
+1. User enters a category in the frontend setup screen.
+2. Frontend calls `POST /api/companies/discover`.
+3. Backend uses `services/llm.py` to return 10-15 suggested brands.
+4. User selects a brand and frontend calls `POST /api/campaigns/create`.
+5. Backend generates prompts (`services/prompt_factory.py`), persists campaign/prompts, enqueues one ARQ job per prompt.
+6. Worker (`process_prompt_job`) fetches model outputs in parallel using configured providers.
+7. Worker stores raw responses, runs analyzer extraction, and writes structured entities (`Result`, `CitedUrl`, `CompetitorMention`).
+8. Frontend dashboard polls `GET /api/campaigns/{id}` every 3 seconds until `is_complete=true`.
+9. Backend computes aggregate metrics and caches completed dashboard payloads in Redis.
+
+## Backend API Surface
+
+- `POST /api/companies/discover`
+- body: `{ "category": "CRM software" }`
+- returns: `{ "brands": ["HubSpot", "Salesforce", ...] }`
+- rate limit: `10/min`
+
+- `POST /api/campaigns/create`
+- body: `{ "brand": "HubSpot", "category": "CRM software" }`
+- returns campaign id and prompt count
+- rate limit: `5/min`
+
+- `GET /api/campaigns/{campaign_id}?page=1&page_size=50`
+- returns full dashboard payload (metrics, model comparison, competitors, cited pages, results)
+- rate limit: `60/min`
+
+- `GET /health`
+- service health and version metadata
+
+All `/api/*` routes are guarded by optional bearer auth:
+
+- If `API_SECRET_KEY=""` (default), auth is disabled.
+- If set, requests must include `Authorization: Bearer <API_SECRET_KEY>`.
+
+## Setup And Run The Project
 
 ### Prerequisites
-- Docker & Docker Compose
-- Groq API Key ([Get one free](https://console.groq.com))
 
-### Setup
+- Docker + Docker Compose plugin
+- Groq API key
+- Google AI Studio API key (used by Gemma provider)
 
-1. **Clone the repository**
+### 1) Configure environment variables
+
+Create a root `.env` file:
+
 ```bash
-git clone https://github.com/aamirray19/AI-visibility-tracker.git 
-cd ai-visible-tracker
+# Required
+GROQ_API_KEY=your_groq_key
+GOOGLE_AI_API_KEY=your_google_ai_key
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/ai_tracker
+
+# Optional/with defaults
+REDIS_URL=redis://redis:6379/0
+API_SECRET_KEY=
+FRONTEND_URL=http://localhost:3000
+WORKER_MAX_JOBS=5
+RATE_LIMIT_SLEEP_SECONDS=2.0
+PROMPT_TARGET_COUNT=100
+DASHBOARD_CACHE_TTL_SECONDS=3600
 ```
 
-2. **Configure environment variables**
+Notes:
+
+- `DATABASE_URL` and `REDIS_URL` above match Docker service hostnames.
+- `frontend` uses `NEXT_PUBLIC_API_URL=http://localhost:8000/api` in `docker-compose.yml`.
+
+### 2) Start all services (recommended)
+
 ```bash
-# Create .env file in project root
-echo "GROQ_API_KEY=your_groq_api_key_here" > .env
+docker compose up --build
 ```
 
-3. **Start the application**
+Services:
+
+- Frontend: `http://localhost:3000`
+- Backend API docs: `http://localhost:8000/docs`
+- PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
+
+### 3) Verify health
+
 ```bash
-docker-compose up --build -d
+curl http://localhost:8000/health
 ```
 
-4. **Access the dashboard**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000/api
-- Database: PostgreSQL on port 5432
+### 4) Watch worker execution
 
-### First Campaign
-
-1. Enter a product category (e.g., "CRM software")
-2. Select your brand from AI-generated suggestions
-3. System generates 100 diverse prompts (80 commercial, 20 informational)
-4. Watch real-time processing and analytics
-
----
-
-## 📊 Key Features
-
-### Advanced Analytics
-- **AI Visibility Score**: Percentage of prompts where your brand appears
-- **Citation Share**: How often your URLs are cited vs competitors
-- **Competitor Leaderboard**: Track competitor mentions and sentiment
-- **Top Cited Pages**: Most referenced URLs across AI responses
-- **Sentiment Analysis**: Brand perception tracking
-- **Intent Segmentation**: Commercial vs informational performance
-
-### Real-Time Processing
-- Sequential prompt processing (respects rate limits)
-- Live progress tracking
-- Automatic retry logic for API failures
-- 2-second delay between requests (30 RPM limit)
-
----
-
-## 🏗️ Architecture
-
-### Tech Stack
-- **Backend**: FastAPI + SQLModel + AsyncPG
-- **Frontend**: Next.js 14 + TailwindCSS + Framer Motion
-- **AI Models**: Groq (Llama 3.3 70B) for all LLM operations
-- **Queue**: Redis + ARQ for background jobs
-- **Database**: PostgreSQL 15
-
-### System Flow
-```
-User Input → Brand Discovery (Groq) → Prompt Generation (Groq) 
-→ Queue Jobs → Worker Processes → AI Execution (Groq) 
-→ Analysis (Groq) → Database → Real-time Dashboard
-```
-
----
-
-## 🎯 Key Design Decisions
-
-### 1. **Groq Over OpenAI/Gemini**
-**Decision**: Use Groq's Llama 3.3 70B for all LLM operations
-
-**Rationale**:
-- **14,400 requests/day** free tier (vs Gemini's 20/day)
-- **30 RPM** vs Gemini's 15-20 RPM
-- **10x faster** response times
-- **No quota headaches** during development
-- Cost-effective for production scaling
-
-**Trade-offs**: Slightly less sophisticated than GPT-4, but excellent for structured outputs
-
-**Location**: `backend/app/services/executor.py`, `analyzer.py`, `llm.py`, `prompt_factory.py`
-
----
-
-### 2. **Sequential Job Processing with Rate Limiting**
-**Decision**: Process one prompt at a time with 2-second delays
-
-**Rationale**:
-- Prevents rate limit errors (30 RPM = 1 req/2s)
-- Ensures reliable completion vs parallel failures
-- Simplifies error handling and retry logic
-- Predictable processing time (~7 minutes for 100 prompts)
-
-**Trade-offs**: Slower than parallel processing, but 100% reliable
-
-**Location**: `backend/app/worker.py` (line 124: `max_jobs = 1`, line 49: `await asyncio.sleep(2)`)
-
----
-
-### 3. **Direct API Calls Instead of Browser Automation**
-**Decision**: Use LiteLLM for direct API calls vs Playwright/Selenium
-
-**Rationale**:
-- **90% faster** execution (API call vs browser render)
-- **No CAPTCHA issues** or anti-bot detection
-- **Simpler infrastructure** (no headless browsers)
-- **Better error handling** with retry logic
-- **Lower resource usage** (no Chrome instances)
-
-**Trade-offs**: Can't capture visual elements or screenshots, but not needed for text analysis
-
-**Location**: `backend/app/services/executor.py` (replaced `crawler.py`)
-
----
-
-### 4. **Comprehensive Analysis with Structured JSON**
-**Decision**: Use LLM for brand detection, competitor tracking, and URL extraction
-
-**Rationale**:
-- **Semantic understanding** vs regex (handles variations: "HubSpot" vs "Hubspot")
-- **Context-aware** sentiment analysis
-- **Automatic competitor detection** without predefined lists
-- **URL attribution** to brands (knows salesforce.com = Salesforce)
-- **Flexible schema** for future metric additions
-
-**Trade-offs**: Adds ~1-2 seconds per prompt, but provides rich insights
-
-**Location**: `backend/app/services/analyzer.py` (lines 26-103)
-
----
-
-### 5. **Dual Database Model: Results + Derived Tables**
-**Decision**: Store raw results + separate tables for competitors and URLs
-
-**Rationale**:
-- **Efficient aggregation** for leaderboards (no JSON parsing in SQL)
-- **Flexible querying** for citation share metrics
-- **Scalable analytics** as data grows
-- **Maintains raw data** for re-analysis if needed
-- **Optimized indexes** on foreign keys
-
-**Trade-offs**: Slightly more complex schema, but enables advanced analytics
-
-**Location**: 
-- `backend/app/models/result.py` (main results)
-- `backend/app/models/cited_url.py` (URL tracking)
-- `backend/app/models/competitor_mention.py` (competitor tracking)
-
----
-
-## 🔧 What We'd Improve
-
-### Short-term (Production Ready)
-1. **Add caching** for dashboard queries (Redis)
-2. **Implement pagination** for large result sets
-3. **Add export functionality** (CSV/PDF reports)
-4. **Improve error notifications** (email/Slack alerts)
-5. **Add user authentication** (JWT tokens)
-
-### Medium-term (Scale)
-1. **Multi-platform support** (test ChatGPT, Claude, Perplexity)
-2. **Historical tracking** (trend analysis over time)
-3. **Competitor benchmarking** (compare against industry averages)
-4. **Custom prompt templates** (user-defined scenarios)
-5. **Webhook integrations** (Zapier, Make.com)
-
-### Long-term (Enterprise)
-1. **Multi-tenant architecture** (team workspaces)
-2. **Advanced ML models** (predict brand visibility trends)
-3. **Real-time monitoring** (alert on ranking changes)
-4. **API rate limit optimizer** (dynamic batching)
-5. **White-label solution** (custom branding for agencies)
-
----
-
-## 📁 Project Structure
-
-```
-ai-visible-tracker/
-├── backend/
-│   ├── app/
-│   │   ├── api/           # FastAPI endpoints
-│   │   ├── models/        # SQLModel schemas
-│   │   ├── services/      # Business logic (LLM, analysis)
-│   │   ├── core/          # Database, queue config
-│   │   └── worker.py      # ARQ background jobs
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── app/              # Next.js pages
-│   ├── components/       # React components
-│   ├── Dockerfile
-│   └── package.json
-├── docker-compose.yml
-├── .env
-└── README.md
-```
-
----
-
-## 🐛 Troubleshooting
-
-### Prompts not generating
 ```bash
-# Check if GROQ_API_KEY is set
-docker-compose exec backend python -c "import os; print(os.getenv('GROQ_API_KEY'))"
-
-# Restart backend
-docker-compose restart backend worker
+docker compose logs -f worker
 ```
 
-### Rate limit errors
-```bash
-# Increase delay in worker.py (line 49)
-await asyncio.sleep(3)  # Change from 2 to 3 seconds
-```
 
-### Database connection issues
-```bash
-# Reset database
-docker-compose down -v
-docker-compose up --build -d
-```
+## Operational Notes And Known Constraints
 
----
-
-## 📝 API Documentation
-
-### Create Campaign
-```bash
-POST /api/campaigns/create
-{
-  "brand": "HubSpot",
-  "category": "CRM software"
-}
-```
-
-### Get Dashboard
-```bash
-GET /api/campaigns/{campaign_id}
-```
-
-### Discover Brands
-```bash
-POST /api/companies/discover
-{
-  "category": "CRM software"
-}
-```
-
----
+- No migration files (Alembic, etc.) are currently included in this repository.
+- `backend/app/core/db.py` enforces `ssl="require"` for Postgres connections. If your local Postgres does not support SSL, adjust this for local development.
+- Worker startup flushes the configured Redis DB (`flushdb`) before processing.
+- Frontend dashboard polling stops once backend returns `is_complete=true`.
 
 
-
-
+## Future Scope
+- Provide exportable campaign reports (CSV/JSON/PDF) for stakeholder sharing.
+- Expand provider adapters to include additional LLM backends and model routing policies.
+- Add longitudinal tracking so campaigns can be compared over weekly/monthly snapshots.
+- Build trend analytics for visibility deltas, rank movement, and sentiment drift.
+- Add configurable prompt templates per industry/persona/use case.
+- Support multi-tenant deployments with tenant isolation and usage metering.
+- Introduce alerting workflows (email/Slack/webhooks) for major visibility changes.
+- Add forecasting and anomaly detection for brand visibility performance.
