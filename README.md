@@ -16,10 +16,12 @@ This project helps teams answer questions like:
 A campaign starts from a category (for example, `CRM software`), discovers candidate brands, generates prompt sets, executes them across configured models, and returns an analytics dashboard with aggregate and per-result metrics.
 
 ## Architecture Diagram
-![System Architecture](docs\assets\visibility.png)
+
+![System Architecture](docs/assets/visibility.png)
 
 ## Database Schema
-![Database Schema](docs\assets\db_schema.png)
+
+![Database Schema](docs/assets/db_schema.png)
 
 ## Key Features And Capabilities
 
@@ -215,7 +217,6 @@ curl http://localhost:8000/health
 docker compose logs -f worker
 ```
 
-
 ## Operational Notes And Known Constraints
 
 - No migration files (Alembic, etc.) are currently included in this repository.
@@ -223,8 +224,8 @@ docker compose logs -f worker
 - Worker startup flushes the configured Redis DB (`flushdb`) before processing.
 - Frontend dashboard polling stops once backend returns `is_complete=true`.
 
-
 ## Future Scope
+
 - Provide exportable campaign reports (CSV/JSON/PDF) for stakeholder sharing.
 - Expand provider adapters to include additional LLM backends and model routing policies.
 - Add longitudinal tracking so campaigns can be compared over weekly/monthly snapshots.
