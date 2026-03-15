@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Trophy } from "lucide-react";
 
 interface CompetitorStats {
     name: string;
@@ -15,73 +16,78 @@ interface CompetitorLeaderboardProps {
     targetBrand: string;
 }
 
-export default function CompetitorLeaderboard({ competitors, targetBrand }: CompetitorLeaderboardProps) {
-    if (competitors.length === 0) {
-        return null;
-    }
+export default function CompetitorLeaderboard({ competitors }: CompetitorLeaderboardProps) {
+    if (competitors.length === 0) return null;
 
-    const medals = ['🥇', '🥈', '🥉'];
+    const medals = ["🥇", "🥈", "🥉"];
+    const maxVisibility = Math.max(...competitors.map((c) => c.ai_visibility), 1);
 
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200"
+            className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800"
         >
-            <div className="mb-6">
-                <h3 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                    <span className="text-3xl">🏆</span>
+            <div className="mb-5">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-slate-50 flex items-center gap-2">
+                    <Trophy className="w-5 h-5 text-amber-500" />
                     Competitor Leaderboard
                 </h3>
-                <p className="text-slate-600 mt-1">How you stack up against the competition</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    How you stack up against the competition
+                </p>
             </div>
 
             <div className="space-y-3">
                 {competitors.map((comp, idx) => (
                     <motion.div
                         key={comp.name}
-                        initial={{ opacity: 0, x: -20 }}
+                        initial={{ opacity: 0, x: -16 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: idx * 0.1 }}
-                        className="flex items-center gap-4 p-4 bg-gradient-to-r from-slate-50 to-white rounded-xl border border-slate-200 hover:shadow-md transition-shadow"
+                        transition={{ delay: idx * 0.06 }}
+                        className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-700/50 hover:shadow-sm transition-shadow"
                     >
-                        {/* Rank Medal/Number */}
-                        <div className="flex-shrink-0 w-12 text-center">
-                            <div className="text-4xl">
-                                {idx < 3 ? medals[idx] : `#${idx + 1}`}
-                            </div>
+                        {/* Rank */}
+                        <div className="flex-shrink-0 w-10 text-center">
+                            {idx < 3 ? (
+                                <span className="text-2xl">{medals[idx]}</span>
+                            ) : (
+                                <span className="text-base font-bold text-slate-400 dark:text-slate-500">
+                                    #{idx + 1}
+                                </span>
+                            )}
                         </div>
 
-                        {/* Brand Name */}
+                        {/* Brand + Progress */}
                         <div className="flex-1 min-w-0">
-                            <div className="font-bold text-lg text-slate-900 truncate">
-                                {comp.name}
+                            <div className="flex items-center justify-between mb-1.5">
+                                <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                                    {comp.name}
+                                </span>
+                                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 ml-2 flex-shrink-0">
+                                    {comp.ai_visibility.toFixed(1)}%
+                                </span>
                             </div>
-                            <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
+                            {/* Visibility bar */}
+                            <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                                <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${(comp.ai_visibility / maxVisibility) * 100}%` }}
+                                    transition={{ duration: 0.6, delay: idx * 0.06 }}
+                                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+                                />
+                            </div>
+                            <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                                 <span>{comp.mention_count} mentions</span>
-                                <span>•</span>
+                                <span>·</span>
                                 <span>Rank #{comp.average_rank.toFixed(1)}</span>
-                                <span>•</span>
+                                <span>·</span>
                                 <span>{(comp.average_sentiment * 100).toFixed(0)}% sentiment</span>
                             </div>
-                        </div>
-
-                        {/* AI Visibility Score */}
-                        <div className="flex-shrink-0 text-right">
-                            <div className="text-3xl font-black bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                                {comp.ai_visibility.toFixed(1)}%
-                            </div>
-                            <div className="text-xs text-slate-500 font-medium">AI Visibility</div>
                         </div>
                     </motion.div>
                 ))}
             </div>
-
-            {competitors.length === 0 && (
-                <div className="text-center py-8 text-slate-400">
-                    <p>No competitors detected in responses</p>
-                </div>
-            )}
         </motion.div>
     );
 }

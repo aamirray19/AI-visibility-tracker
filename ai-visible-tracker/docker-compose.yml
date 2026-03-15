@@ -8,11 +8,20 @@ services:
       - ./backend:/app
     environment:
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY}
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
+      - API_SECRET_KEY=${API_SECRET_KEY}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   worker:
     image: ai-tracker-backend
@@ -22,11 +31,18 @@ services:
       - ./backend:/app
     environment:
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY}
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
+      - WORKER_MAX_JOBS=${WORKER_MAX_JOBS:-5}
+      - RATE_LIMIT_SLEEP_SECONDS=${RATE_LIMIT_SLEEP_SECONDS:-2.0}
+      - PROMPT_TARGET_COUNT=${PROMPT_TARGET_COUNT:-100}
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    depends_on:
+      backend:
+        condition: service_healthy
 
   frontend:
     build: ./frontend
@@ -36,4 +52,15 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
+      # NEXT_PUBLIC_ vars are baked into the browser JS bundle at build time.
+      # The browser runs on the HOST machine (outside Docker), so it must use
+      # localhost:8000 — not the Docker-internal "backend" hostname.
       - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

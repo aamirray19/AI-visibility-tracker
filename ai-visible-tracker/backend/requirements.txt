@@ -1,6 +1,6 @@
 fastapi
-uvicorn
-litellm
+uvicorn[standard]
+pydantic-settings
 pydantic
 python-dotenv
 httpx
@@ -9,4 +9,6 @@ asyncpg
 redis
 arq
 tenacity
-openai
+groq
+google-genai
+slowapi
