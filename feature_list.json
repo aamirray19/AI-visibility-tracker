@@ -1,0 +1,23 @@
+{
+  "features": [
+    {
+      "id": "phase-1-repository-baseline",
+      "name": "Repository baseline",
+      "status": "implemented",
+      "phase": 1,
+      "notes": "FastAPI health endpoint, settings, Docker Compose, Next.js baseline shell, and initial tests added."
+    },
+    {
+      "id": "phase-2-database-schema",
+      "name": "Database schema and migrations",
+      "status": "planned",
+      "phase": 2
+    },
+    {
+      "id": "phase-3-auth-owner-scope",
+      "name": "Auth and owner scope",
+      "status": "planned",
+      "phase": 3
+    }
+  ]
+}

@@ -1,67 +1,65 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 *.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
+.venv/
 venv/
-env/
-ENV/
-.venv
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
+# Backend runtime
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/__pycache__/
+backend/**/*.py[cod]
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/*.egg-info/
 
-# Environment Variables
-.env
-.env.local
-.env.*.local
-
-# Docker
-*.log
-
-# Node
+# Node / Next.js
 node_modules/
-.next/
-out/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/coverage/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Test artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+test-results/
+playwright-report/
+coverage/
+
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Database
-*.db
-*.sqlite
-postgres_data/
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-
-# Artifacts (keep brain directory for documentation)
-# .gemini/
-
-# OS
+# OS / editor
+.DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local temp
+tmp/
+temp/
