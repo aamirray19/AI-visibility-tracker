@@ -10,8 +10,9 @@
     {
       "id": "phase-2-database-schema",
       "name": "Database schema and migrations",
-      "status": "planned",
-      "phase": 2
+      "status": "implemented",
+      "phase": 2,
+      "notes": "Campaign, prompt, result, citation, and competitor models added with initial Alembic migration and status derivation tests."
     },
     {
       "id": "phase-3-auth-owner-scope",

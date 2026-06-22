@@ -88,18 +88,18 @@ Every phase below has a mandatory testing gate. A phase is not complete until un
 - Modify: `docs/decisions.md`
 - Modify: `PROGRESS.md`
 
-- [ ] Define `Campaign` with `owner_id`, `brand_name`, `category`, `prompt_count`, `created_at`, and `updated_at`.
-- [ ] Define `Prompt` with `campaign_id`, `text`, `intent_type`, `status`, `error_message`, `created_at`, and `updated_at`.
-- [ ] Define `Result` with `prompt_id`, `provider`, `model`, `response_text`, analysis fields, `analysis_status`, `provider_metadata`, and `created_at`.
-- [ ] Define `CitedUrl` with normalized URL, domain, title, provider, target-brand flag, citation type, metadata, and timestamp.
-- [ ] Define `CompetitorMention` with result link, brand name, rank, sentiment, and timestamp.
-- [ ] Add indexes required by the system design: owner history, owner detail lookup, prompt status, result provider, citation domain, target brand, and competitor brand.
-- [ ] Implement campaign status derivation from prompt states: `CREATED`, `PROCESSING`, `COMPLETED`, `PARTIAL`, and `FAILED`.
-- [ ] Add migration test that applies Alembic migrations against test Postgres.
-- [ ] Add unit tests for every campaign status derivation branch.
-- [ ] Run migration tests and status tests.
-- [ ] Run the Phase 2 mandatory testing gate from `docs/testing.md`: backend schema/status unit tests, Alembic migration test, local API health smoke check, and baseline Playwright render check.
-- [ ] Record schema decisions and verification evidence.
+- [x] Define `Campaign` with `owner_id`, `brand_name`, `category`, `prompt_count`, `created_at`, and `updated_at`.
+- [x] Define `Prompt` with `campaign_id`, `text`, `intent_type`, `status`, `error_message`, `created_at`, and `updated_at`.
+- [x] Define `Result` with `prompt_id`, `provider`, `model`, `response_text`, analysis fields, `analysis_status`, `provider_metadata`, and `created_at`.
+- [x] Define `CitedUrl` with normalized URL, domain, title, provider, target-brand flag, citation type, metadata, and timestamp.
+- [x] Define `CompetitorMention` with result link, brand name, rank, sentiment, and timestamp.
+- [x] Add indexes required by the system design: owner history, owner detail lookup, prompt status, result provider, citation domain, target brand, and competitor brand.
+- [x] Implement campaign status derivation from prompt states: `CREATED`, `PROCESSING`, `COMPLETED`, `PARTIAL`, and `FAILED`.
+- [x] Add migration test that applies Alembic migrations against test Postgres.
+- [x] Add unit tests for every campaign status derivation branch.
+- [x] Run migration tests and status tests.
+- [x] Run the Phase 2 mandatory testing gate from `docs/testing.md`: backend schema/status unit tests, Alembic migration test, local API health smoke check, and baseline Playwright render check.
+- [x] Record schema decisions and verification evidence.
 
 ---
 
