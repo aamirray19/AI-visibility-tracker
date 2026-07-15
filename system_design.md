@@ -5,41 +5,6 @@
 **Source of truth:** PRD "AI Brand Monitoring Platform" + review answers
 **Stack:** FastAPI · Supabase (Postgres) · Redis Cloud (cache + ARQ) · React (Lovable) on Vercel · Render (API + worker)
 
-### Changes from v1.0
-| # | Change |
-|---|---|
-| 1 | **Single-user** deployment. No Supabase Auth, no RLS, no `user_id`. Backend guarded by a shared API key (§14). |
-| 2 | **Scan reuse cache** replaces the duplicate-scan block. A recent scan for the same domain is returned instead of re-run (§7.1). |
-| 3 | **No `language` field.** English only, end to end. |
-| 4 | **Evaluation model = Llama 3.3 70B (Groq).** Groq now carries both halves of the pipeline — see §15.1 for the capacity model. |
-| 5 | Execution models pinned: `gemma-4-31b-it` (Google AI Studio), `openai/gpt-oss-120b` (Groq). |
-| 6 | **Zero competitors is a supported mode**, not an error. Brand-only monitoring (§7.6). |
-| 7 | **Groq web-search citations are captured, stored, and surfaced** as a dashboard section (§7.8). |
-| 8 | No billing model → per-user quotas dropped; a global cost ceiling is kept as a safety fuse. |
-| 9 | One-shot scans confirmed. All recurring/trend design removed. |
-
-### Changes in v1.2
-| # | Change |
-|---|---|
-| 10 | **Key-pool credential router** (§10.1). 6 Groq keys across 3 named pools: `groq_exec` (2), `groq_eval_a` (2), `groq_eval_b` (2). Rate limiting and circuit breaking move from **per-provider** to **per-key**. *(Exec strategy superseded in v1.3: round_robin, not failover.)* |
-| 11 | **Two evaluator instances**, one bound to each execution provider: `eval_a` evaluates Gemma responses, `eval_b` evaluates GPT-OSS responses. Same model, isolated key pools and isolated failure domains (§7.9). |
-| 12 | `SCAN_REUSE_TTL_HOURS = 24` confirmed. |
-| 13 | Groq rate limits are enforced **per organization, not per API key**. **Confirmed: the 6 keys come from 6 separate Groq accounts**, so the pools do multiply capacity and per-key limiting is correct (`RATE_LIMIT_SCOPE=key`, 1 key ↔ 1 org). |
-
-### Changes in v1.3
-| # | Change |
-|---|---|
-| 14 | 6 keys = 6 orgs confirmed. Key↔org is **1:1**, which collapses the org-grouping logic in §10.1 and makes the per-key limiter exactly right. |
-| 15 | `groq_exec` switched to **`round_robin`** (§10.1) — with the two keys in different orgs, failover would waste half your execution capacity. |
-| 16 | §15.1 rewritten: real capacity model, and **RPD/TPM are now the limits to watch, not RPM**. Also flags the Developer-tier alternative, which is worth 10 minutes of your time before you provision six accounts. |
-
-### Changes in v1.4
-| # | Change |
-|---|---|
-| 17 | **4 Google AI Studio keys**, split `google_exec` (3, round-robin, Gemma) + `google_flash` (1, reserved for Gemini). Google is no longer a single point of failure (§10.1). |
-| 18 | Both providers now sit behind real pools. The Developer-tier discussion is closed — six free Groq accounts it is. |
-| 19 | **`ADAPTIVE_RATE_LIMIT` is now the default and the recommendation**: the limiter reads each provider's `x-ratelimit-remaining-*` / `retry-after` response headers instead of relying on hardcoded RPM/TPM values. Nobody has to look up a limits page, and the system self-corrects if a tier changes underneath it. |
-
 ---
 
 ## 1. Goals and Non-Goals
@@ -80,7 +45,7 @@ flowchart TB
     end
 
     subgraph Google["Google AI Studio (key pools, §10.1)"]
-        GEM["gemini-2.5-flash<br/>enrich · verify · prompt-gen<br/>pool: google_flash (1 key)"]
+        GEM["gemini-2.5-flash<br/>enrich · verify · prompt-gen<br/>pool: google_flash (2 keys)"]
         GEMMA["gemma-4-31b-it<br/>execution<br/>pool: google_exec (3 keys)"]
     end
 
@@ -380,7 +345,7 @@ POST /scans { name, website }
   └─ miss → create a new scan, run the pipeline
 ```
 
-On scan completion: `SETEX scan:recent:{domain} <SCAN_REUSE_TTL> <scan_id>`. When the key expires, the next request for that domain runs a fresh scan. Default `SCAN_REUSE_TTL_HOURS=24`.
+On scan completion: `SETEX scan:recent:{domain} <SCAN_REUSE_TTL> <scan_id>`. When the key expires, the next request for that domain runs a fresh scan. Default `SCAN_REUSE_TTL_HOURS=1`.
 
 The Postgres rows are **not** deleted when the cache key expires — history is nearly free and makes debugging possible. If you want hard deletion, set `SCAN_PURGE_AFTER_DAYS` and a nightly cron drops scans older than that (cascades clean up every child table). Reuse can always be bypassed with `POST /scans?force=true`, which the UI should expose as "Run a fresh scan".
 
@@ -632,7 +597,7 @@ Aggregation is idempotent (one `scan_metrics` row per scan, upserted), so a doub
 | `scan:{id}:pending_exec` / `pending_eval` | int | 1 h | Fan-out counters |
 | `scan:{id}:progress` | hash | 60 s | Cached progress for polling |
 | `scan:{id}:cancelled` | flag | 1 h | Cooperative cancellation |
-| `scan:recent:{domain}` | string → scan_id | `SCAN_REUSE_TTL` (24 h) | **Scan reuse cache (§7.1)** |
+| `scan:recent:{domain}` | string → scan_id | `SCAN_REUSE_TTL` (1 h) | **Scan reuse cache (§7.1)** |
 | `cache:enrich:{domain}` | json | 7 d | Phase 2 reuse |
 | `cache:llm:{hash}` | json | 0 (off in prod) | Execution cache — dev only |
 | `ratelimit:{key_id}` | sorted set | 60 s | Sliding-window limiter — **per key, not per provider** (§10.1) |
@@ -718,29 +683,29 @@ Adding a third execution provider later is a config line plus one adapter — th
 
 ### 10.1 Key Pools (the credential router)
 
-Six Groq keys, three named pools. A pool is the unit of capacity; a key is the unit of failure.
+Eleven keys, five named pools. A pool is the unit of capacity; a key is the unit of failure.
 
-**10 keys, 5 pools.** Both providers are pooled; neither is a single point of failure.
+**11 keys, 5 pools.** Both providers are pooled; neither is a single point of failure.
 
 | Pool | Keys | Used by | Calls / scan | Strategy |
 |---|---|---|---|---|
 | `google_exec` | 3 | `gemma-4-31b-it` execution | ~100 | `round_robin` |
-| `google_flash` | 1 | `gemini-2.5-flash` — enrichment, verification, prompt-gen | ~6 | single |
+| `google_flash` | 2 | `gemini-2.5-flash` — enrichment, verification, prompt-gen | ~6 | `failover` |
 | `groq_exec` | 2 | `openai/gpt-oss-120b` execution (+ web search) | ~100 | `round_robin` |
 | `groq_eval_a` | 2 | `llama-3.3-70b` evaluating **Gemma** responses | ≤ 50 | `round_robin` |
 | `groq_eval_b` | 2 | `llama-3.3-70b` evaluating **GPT-OSS** responses | ≤ 50 | `round_robin` |
 
-#### Why 3 + 1 and not 4 across the board
+#### Why 3 + 2 and not 5 across the board
 
-The 4 Google keys are split rather than pooled together, for the same reason §8 splits the ARQ queues: **the human-gated path must never queue behind the bulk path.**
+The 5 Google keys are split rather than pooled together, for the same reason §8 splits the ARQ queues: **the human-gated path must never queue behind the bulk path.**
 
-`google_flash` handles enrichment, verification, and prompt generation — roughly 6 calls per scan, but they're the calls a *user is sitting and waiting on*, at the profile-verification gate. `google_exec` handles ~100 Gemma calls that nobody is watching in real time. Reserving one key for the interactive work guarantees that a saturated execution pool can never make a user stare at a spinner while their company profile waits behind 100 background jobs.
+`google_flash` handles enrichment, verification, and prompt generation — roughly 6 calls per scan, but they're the calls a *user is sitting and waiting on*, at the profile-verification gate. `google_exec` handles ~100 Gemma calls that nobody is watching in real time. Reserving two keys for the interactive work (v1.5: bumped from one — a single key made the entire onboarding funnel a hard stop, not just a degraded path) guarantees that a saturated execution pool can never make a user stare at a spinner while their company profile waits behind 100 background jobs, and a dead/cooling `google_flash` key no longer blocks every scan in the system.
 
-The cost is ~25% less execution throughput than a flat 4-way split. That's a good trade: execution is asynchronous and already parallel across two providers, while the verification gate is the one place a human is blocked.
+The cost is less execution throughput than a flat 5-way split. That's a good trade: execution is asynchronous and already parallel across two providers, while the verification gate is the one place a human is blocked.
 
 Two notes on Google's limits, so the pool is configured against reality rather than hope:
-- **AI Studio keys are scoped to a Google Cloud project.** Four keys inside *one* project share one quota — the same trap as Groq's org-level limits. Four keys across four projects give four buckets. If they turn out to share a project, set `RATE_LIMIT_SCOPE=org` for the Google pools (the `Key.org` field carries the project id) and treat them as failover rather than capacity.
-- **Gemini and Gemma have separate per-model quotas**, so the flash calls and the Gemma calls don't contend at the model level even when they share a project. The 3 + 1 split is belt-and-braces: it holds up whether the binding limit turns out to be per-model or per-project.
+- **AI Studio keys are scoped to a Google Cloud project.** Five keys inside *one* project share one quota — the same trap as Groq's org-level limits. Five keys across five projects give five buckets. If they turn out to share a project, set `RATE_LIMIT_SCOPE=org` for the Google pools (the `Key.org` field carries the project id) and treat them as failover rather than capacity.
+- **Gemini and Gemma have separate per-model quotas**, so the flash calls and the Gemma calls don't contend at the model level even when they share a project. The 3 + 2 split is belt-and-braces: it holds up whether the binding limit turns out to be per-model or per-project.
 
 **Strategy semantics:**
 - **`failover`** — always use key 1; only touch key 2 when key 1 is cooling down, breaker-open, or saturated. Preserves a clean "primary/fallback" mental model, but **does not increase throughput** in the normal case: one key does all the work.
@@ -924,7 +889,7 @@ With no auth system, be honest about what the controls actually are:
 
 | Concern | Control |
 |---|---|
-| API access | `X-API-Key` shared secret, checked in FastAPI middleware, constant-time compare. **This is in the browser bundle, so it is obfuscation, not security.** It stops drive-by traffic, not a determined person. Acceptable while this is a single-user internal tool; **add real auth (Supabase Auth + JWT + RLS) before it is public.** |
+| API access | `X-API-Key` shared secret, checked in FastAPI middleware, constant-time compare. **This is in the browser bundle, so it is obfuscation, not security** — it stops drive-by traffic and automated scanners, not a determined person who reads the Network tab. **This is a deliberate, permanent decision (v1.5), not a placeholder for future auth.** There are no user accounts, no login, no `user_id`, ever — the app has exactly one operator, and adding real auth would be pure complexity for no benefit at this scale. The actual backstop against abuse is the cost ceiling below, not the key. |
 | Provider API keys | Render env vars only. Never in the client. The frontend has no path to a provider. |
 | Supabase keys | Backend holds `service_role`. The frontend gets **no** Supabase key at all — it talks only to FastAPI. |
 | CORS | Allowlist the Vercel domain only. |
@@ -945,11 +910,11 @@ Evaluation on Llama 3.3 70B (Groq) means **Groq handles both halves of the pipel
 | Provider | Calls per scan | Keys | Per-key share |
 |---|---|---|---|
 | Google — `gemma-4-31b-it` | ~100 execution | 3 (`google_exec`) | ~33 |
-| Google — `gemini-2.5-flash` | ~6 (enrich, verify, prompt-gen) | 1 (`google_flash`) | ~6 |
+| Google — `gemini-2.5-flash` | ~6 (enrich, verify, prompt-gen) | 2 (`google_flash`) | ~6 |
 | Groq — `gpt-oss-120b` | ~100 execution (web search) | 2 (`groq_exec`) | ~50 |
 | Groq — `llama-3.3-70b` | ≤ 100 evaluation | 4 (`groq_eval_a` + `groq_eval_b`) | ~25 |
 
-**10 keys, ~206 calls, no key doing more than ~50.** Both providers are pooled and neither is a single point of failure. This is a comfortable configuration.
+**11 keys, ~206 calls, no key doing more than ~50.** Both providers are pooled and neither is a single point of failure. This is a comfortable configuration.
 
 Groq enforces rate limits **per organization**, not per API key (https://console.groq.com/docs/rate-limits). Six keys across six separate accounts therefore means **six independent buckets**, and the per-key limiter in §9 is exactly right:
 
@@ -1009,7 +974,7 @@ Order of magnitude: low tens of cents per scan on current open-model pricing. Bu
 - **`job_runs` table** — every job execution, status, duration, error. This is your debugging surface when a scan "looks weird": query by `scan_id`, replay the pipeline.
 - **Sentry** on API and worker.
 - **Ops view** (a Supabase SQL view is enough): scans by status, p50/p95 duration, per-provider success rate and p95 latency, cost per scan, breaker trips.
-- **Key-pool health** — the one dashboard you'll actually live in: per `api_key_id`, requests served, 429 rate, seconds in cooldown, breaker state, and the **limit the adaptive limiter has learned from the wire**. Across 10 keys, this is where a quietly-throttled or quietly-dead key becomes visible. A key serving ~0 requests is either idle by design or dead and unnoticed, and only this view tells you which.
+- **Key-pool health** — the one dashboard you'll actually live in: per `api_key_id`, requests served, 429 rate, seconds in cooldown, breaker state, and the **limit the adaptive limiter has learned from the wire**. Across 11 keys, this is where a quietly-throttled or quietly-dead key becomes visible. A key serving ~0 requests is either idle by design or dead and unnoticed, and only this view tells you which.
 - **Alerts:** any scan non-terminal > 30 min; **any key permanently disabled (401/403/spend-block) — page immediately**; pool breaker open; pool 429 rate > 20% over 10 min; queue depth > 500; daily cost > threshold.
 
 ---
@@ -1024,21 +989,22 @@ API_KEY=                          # shared secret for X-API-Key
 CORS_ORIGINS=https://app.yourdomain.com
 
 # Providers — key pools (§10.1). Comma-separated: id:secret:org
-# 10 keys, 5 pools. `org` = Groq organization / Google Cloud project — keys sharing
+# 11 keys, 5 pools. `org` = Groq organization / Google Cloud project — keys sharing
 # an org share a rate-limit bucket, which is what RATE_LIMIT_SCOPE keys off.
 GOOGLE_EXEC_KEYS=g_exec_1:AIza...:projA,g_exec_2:AIza...:projB,g_exec_3:AIza...:projC
-GOOGLE_FLASH_KEYS=g_flash_1:AIza...:projD
+GOOGLE_FLASH_KEYS=g_flash_1:AIza...:projD,g_flash_2:AIza...:projE
 
 GROQ_EXEC_KEYS=groq_exec_1:gsk_...:orgA,groq_exec_2:gsk_...:orgB
 GROQ_EVAL_A_KEYS=groq_eval_a1:gsk_...:orgC,groq_eval_a2:gsk_...:orgD
 GROQ_EVAL_B_KEYS=groq_eval_b1:gsk_...:orgE,groq_eval_b2:gsk_...:orgF
 
 POOL_GOOGLE_EXEC_STRATEGY=round_robin
+POOL_GOOGLE_FLASH_STRATEGY=failover      # v1.5: 2 keys, fallback only — low volume, no need for round_robin
 POOL_GROQ_EXEC_STRATEGY=round_robin      # 2 separate orgs → use both buckets (§10.1)
 POOL_GROQ_EVAL_A_STRATEGY=round_robin
 POOL_GROQ_EVAL_B_STRATEGY=round_robin
 RATE_LIMIT_SCOPE=key                     # valid because key↔org is 1:1 (6 Groq accounts,
-                                         # 4 Google projects). If any two keys ever share an
+                                         # 5 Google projects). If any two keys ever share an
                                          # org/project, switch to 'org'.
 
 MODEL_ENRICHMENT=gemini-2.5-flash
@@ -1053,7 +1019,7 @@ PROMPT_COUNT=50
 WORKER_MAX_JOBS=20
 LLM_TIMEOUT_S=60
 LLM_CACHE_TTL=0                   # execution cache OFF in prod
-SCAN_REUSE_TTL_HOURS=24           # §7.1
+SCAN_REUSE_TTL_HOURS=1             # §7.1
 SCAN_PURGE_AFTER_DAYS=0           # 0 = never hard-delete
 SCAN_SUCCESS_THRESHOLD=0.70
 EVAL_MAX_DEFER_S=900
@@ -1110,26 +1076,13 @@ backend/
 
 ---
 
-## 19. Build Order
+## 19. Status
 
-| Milestone | Scope | What it proves |
-|---|---|---|
-| **M1** | Schema + Phases 1–4 + API-key guard + Lovable wiring. No pipeline. | The interactive path and the human gates work end to end. |
-| **M2** | LLM abstraction + real enrichment & verification. | Profile quality. **Run 10 real companies and read every profile by hand before moving on.** |
-| **M3** | Prompt generation + the category mix + brand-only variant. | Prompt realism. Read all 50 by hand. Bad prompts make everything downstream decorative. |
-| **M4** | Execution + evaluation for a single prompt, single provider. | The unit of work, and the first real read on Groq's limits. |
-| **M5** | Fan-out, counters, rate limiter, breaker, sweeper, retry endpoint. | Scale and reliability. |
-| **M6** | Aggregation + dashboard + Prompt Explorer + Top Sources. | The payoff. |
-| **M7** | Cost tracking, ops view, alerts. | Operability. |
+Everything is decided as of v1.5. Nothing is deferred to a future revision:
 
-M2 and M3 are where the product is won. A beautiful dashboard over bad prompts is a beautiful lie.
+- **Frontend.** The existing Lovable scaffold (TanStack Start on Cloudflare Workers, direct Supabase client + Supabase Auth) does not carry over — §6 is the spec, not a proposal. The frontend is rebuilt as a plain client against §6: REST + `X-API-Key` only, no Supabase SDK, no auth screens.
+- **Auth.** None, permanently — see §14, v1.5 note.
+- **Key pools.** All 11 keys provisioned; no fallback needed on provisioning timing.
 
----
-
-## 20. Remaining Open Questions
-
-1. **Lovable frontend contract.** The only one left. When you can share the generated client/types, I'll reconcile §6 (endpoints, payload shapes, error codes) against what the UI already calls — so the backend adapts to the existing frontend rather than forcing a UI rewrite. Until then, treat §6 as a proposal, not a spec.
-
-Everything else is decided. The rate-limit numbers deliberately aren't in here: the adaptive limiter (§15.1) reads them off each provider's response headers, so no limits page ever needs to be consulted and nothing goes stale when a tier changes.
-
+The rate-limit numbers deliberately aren't in here: the adaptive limiter (§15.1) reads them off each provider's response headers, so no limits page ever needs to be consulted and nothing goes stale when a tier changes. §15.1/§15.2's timing-budget discrepancy (TPM-bound estimate vs. the stated wall-clock) is a known open item, intentionally not resolved — actual throughput will be measured against real traffic rather than modeled further up front.
 
