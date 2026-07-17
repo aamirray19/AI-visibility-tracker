@@ -21,6 +21,8 @@ TRANSITIONS: dict[str, set[str]] = {
     "cancelled": set(),
 }
 
+TERMINAL_STATUSES = {status for status, allowed in TRANSITIONS.items() if not allowed}
+
 
 class _HasStatus(Protocol):
     status: str

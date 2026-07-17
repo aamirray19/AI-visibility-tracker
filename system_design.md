@@ -319,7 +319,7 @@ Plain React SPA against §6 only — REST + `X-API-Key`, no Supabase SDK, no aut
 
 | Page | Backed by | Notes |
 |---|---|---|
-| **Onboarding** | `POST /companies/resolve`, `POST /scans` | Name + website form. Shows the soft `COMPANY_MISMATCH` warning inline ("that doesn't look like the same company — continue anyway?"). If an active/recent scan exists, redirect straight to its current page instead of re-onboarding (§7.1). |
+| **Onboarding** | `POST /companies/resolve`, `POST /scans` | Name + website form. `COMPANY_MISMATCH` is a **hard** `422` (§7.1) — shown as a blocking inline error ("that doesn't look like the same company — check the name and website"), no override. If an active/recent scan exists, redirect straight to its current page instead of re-onboarding (§7.1). |
 | **Verification** | `GET/PATCH /scans/{id}/profile`, `POST /profile/confirm` | Editable sections for industry/products/competitors/aliases (add/edit/remove, per PRD Phase 3). Company and website are shown read-only — they were resolved and locked in Phase 1; getting a different company means restarting onboarding. After confirm, shows verifier `issues` inline with keep/remove per flagged item, then a second confirm to accept as-is. |
 | **Scope** | `PUT /scans/{id}/scope` | Checkbox list of the 9 monitoring categories, default all checked. |
 | **Progress** | `POST /scans/{id}/launch`, `GET /scans/{id}` (2 s poll) | Progress bar driven by `progress.{stage, done, total}`; cancel button (`DELETE /scans/{id}`). |

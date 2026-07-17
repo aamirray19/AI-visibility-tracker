@@ -11,6 +11,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -57,7 +58,7 @@ class Scan(Base):
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
-        Index("ix_scans_company_id_finished_at", "company_id", "finished_at"),
+        Index("ix_scans_company_id_finished_at", "company_id", text("finished_at DESC")),
         Index("ix_scans_status", "status"),
     )
 

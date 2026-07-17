@@ -62,14 +62,14 @@ Intended outcome: a working local pipeline (mocked LLM providers) provable end-t
 
 **Goal:** The one interface every later phase calls, fully testable with zero real API keys.
 
-- [ ] **Task 1** — `backend/app/llm/base.py`: `LLMResponse` (Pydantic), `LLMProvider` Protocol (`complete(prompt, system, schema, tools, timeout)`), and the decorator chain **cost tracking → key-pool router → retry → timeout → raw client** per §10.
-- [ ] **Task 2** — `backend/app/core/keypool.py`: `Key(id, secret, org)`, `KeyPool.acquire(est_tokens)` per §10.1's pseudocode, parsing the comma-separated `id:secret:org` env format from §17.
-- [ ] **Task 3** — `backend/app/core/ratelimit.py`: the sliding-window `try_acquire` from §9 (`ratelimit:{key_id}`, `tokens:{key_id}`), plus adaptive-mode header parsing (`x-ratelimit-remaining-*`) per §15.1, with `RATE_LIMIT_COLD_START_*` as the pre-header floor.
-- [ ] **Task 4** — `backend/app/core/circuit.py`: per-key breaker (`circuit:{key_id}`, 5 failures/60s → 5 min open, half-open probe after) and pool breaker (`circuit:pool:{pool}`, opens only when every key is down) per §10.1/§13.3.
-- [ ] **Task 5** — `backend/app/core/pricing.py`: `PRICING_USD_PER_1K` table + `estimate_cost_usd`, raising on an unknown model per §15.3 (never silently `$0`).
-- [ ] **Task 6** — `backend/app/llm/google.py`, `backend/app/llm/groq.py`: `GoogleAIStudioProvider`, `GroqProvider` implementing the `LLMProvider` Protocol, including Groq's tool-use loop for `web_search` → `citations` per §7.8.
-- [ ] **Task 7** — `backend/app/llm/schemas.py`: shared home for the Pydantic structured-output models built out incrementally in Phases 4/5/7/9.
-- [ ] **Task 8** — `backend/app/llm/prompts/.gitkeep`: empty dir now, real `.jinja` templates land per-phase starting Phase 4.
+- [x] **Task 1** — `backend/app/llm/base.py`: `LLMResponse` (Pydantic), `LLMProvider` Protocol (`complete(prompt, system, schema, tools, timeout)`), and the decorator chain **cost tracking → key-pool router → retry → timeout → raw client** per §10.
+- [x] **Task 2** — `backend/app/core/keypool.py`: `Key(id, secret, org)`, `KeyPool.acquire(est_tokens)` per §10.1's pseudocode, parsing the comma-separated `id:secret:org` env format from §17.
+- [x] **Task 3** — `backend/app/core/ratelimit.py`: the sliding-window `try_acquire` from §9 (`ratelimit:{key_id}`, `tokens:{key_id}`), plus adaptive-mode header parsing (`x-ratelimit-remaining-*`) per §15.1, with `RATE_LIMIT_COLD_START_*` as the pre-header floor.
+- [x] **Task 4** — `backend/app/core/circuit.py`: per-key breaker (`circuit:{key_id}`, 5 failures/60s → 5 min open, half-open probe after) and pool breaker (`circuit:pool:{pool}`, opens only when every key is down) per §10.1/§13.3.
+- [x] **Task 5** — `backend/app/core/pricing.py`: `PRICING_USD_PER_1K` table + `estimate_cost_usd`, raising on an unknown model per §15.3 (never silently `$0`).
+- [x] **Task 6** — `backend/app/llm/google.py`, `backend/app/llm/groq.py`: `GoogleAIStudioProvider`, `GroqProvider` implementing the `LLMProvider` Protocol, including Groq's tool-use loop for `web_search` → `citations` per §7.8.
+- [x] **Task 7** — `backend/app/llm/schemas.py`: shared home for the Pydantic structured-output models built out incrementally in Phases 4/5/7/9.
+- [x] **Task 8** — `backend/app/llm/prompts/.gitkeep`: empty dir now, real `.jinja` templates land per-phase starting Phase 4.
 
 **Dependency note:** Needs Phase 1's `config.py` (key env vars) and `errors.py` (`AppError` on `PoolExhausted`/permanent key failures). Real provider adapters are wired but not exercised against live APIs until Phase 21 — every consumer phase mocks the `LLMProvider` Protocol.
 
@@ -81,11 +81,11 @@ Intended outcome: a working local pipeline (mocked LLM providers) provable end-t
 
 **Goal:** `POST /companies/resolve` and `POST /scans` work end-to-end with no LLM involved — a scan row can be created and reused.
 
-- [ ] **Task 1** — `backend/app/services/onboarding.py`: website format validation + SSRF guard (reject IPs/localhost/private ranges, non-http(s) schemes, 5s timeout, 1MB cap, max 2 redirects with host re-validation on each per §14), domain normalization (`tldextract`), name normalization (strip legal suffixes `inc|ltd|llc|corp|gmbh|pvt|pte`), homepage fetch + extraction (title/og/meta + body text, cached under `cache:enrich:{domain}`), **hard** mismatch check (`rapidfuzz.token_set_ratio < 60` **and** domain doesn't contain the name token → `422 COMPANY_MISMATCH`, no override — per the resolved gap), company upsert on `domain`.
-- [ ] **Task 2** — `backend/app/services/onboarding.py` (cont.): scan-reuse logic per §7.1's pseudocode — active-scan check, `scan:recent:{domain}` Redis lookup, `?force=true` bypass. The `SETEX scan:recent:{domain}` write-on-completion call is stubbed here (real call added in Phase 10 once a scan can actually finish).
-- [ ] **Task 3** — `backend/app/api/v1/companies.py`: `POST /companies/resolve` → `{company_id, name, domain, recent_scan_id?}`.
-- [ ] **Task 4** — `backend/app/api/v1/scans.py`: `GET /scans` (cursor paginated), `GET /scans/{id}`, `DELETE /scans/{id}` (sets `scan:{id}:cancelled`). `POST /scans` (`202`) is built here **without** the job-enqueue call — the route validates, creates/reuses the scan row, and returns; the one-line `enqueue_job("enrich_company", ...)` is added as the last step of Phase 4, once that job exists.
-- [ ] **Task 5** — `backend/app/main.py`: mount `companies.py` + `scans.py` under `/api/v1`, `require_api_key` on everything but `/health`, CORS allowlist from `cors_origins`.
+- [x] **Task 1** — `backend/app/services/onboarding.py`: website format validation + SSRF guard (reject IPs/localhost/private ranges, non-http(s) schemes, 5s timeout, 1MB cap, max 2 redirects with host re-validation on each per §14), domain normalization (`tldextract`), name normalization (strip legal suffixes `inc|ltd|llc|corp|gmbh|pvt|pte`), homepage fetch + extraction (title/og/meta + body text, cached under `cache:enrich:{domain}`), **hard** mismatch check (`rapidfuzz.token_set_ratio < 60` **and** domain doesn't contain the name token → `422 COMPANY_MISMATCH`, no override — per the resolved gap), company upsert on `domain`.
+- [x] **Task 2** — `backend/app/services/onboarding.py` (cont.): scan-reuse logic per §7.1's pseudocode — active-scan check, `scan:recent:{domain}` Redis lookup, `?force=true` bypass. The `SETEX scan:recent:{domain}` write-on-completion call is stubbed here (real call added in Phase 10 once a scan can actually finish).
+- [x] **Task 3** — `backend/app/api/v1/companies.py`: `POST /companies/resolve` → `{company_id, name, domain, recent_scan_id?}`.
+- [x] **Task 4** — `backend/app/api/v1/scans.py`: `GET /scans` (cursor paginated), `GET /scans/{id}`, `DELETE /scans/{id}` (sets `scan:{id}:cancelled`). `POST /scans` (`202`) is built here **without** the job-enqueue call — the route validates, creates/reuses the scan row, and returns; the one-line `enqueue_job("enrich_company", ...)` is added as the last step of Phase 4, once that job exists.
+- [x] **Task 5** — `backend/app/main.py`: mount `companies.py` + `scans.py` under `/api/v1`, `require_api_key` on everything but `/health`, CORS allowlist from `cors_origins`.
 
 **Dependency note:** Needs Phase 1 (schema, errors, deps, lifecycle) and Phase 2 only for `AppError` codes — no LLM calls yet.
 

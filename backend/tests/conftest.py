@@ -3,7 +3,12 @@ import os
 import pytest
 import pytest_asyncio
 import redis.asyncio as redis_asyncio
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.config import settings
+from app.deps import get_db, get_redis
+from app.main import app
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -38,3 +43,25 @@ async def redis_client():
     yield client
     await client.flushdb()
     await client.aclose()
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession, redis_client):
+    """An httpx client against the real app, with get_db/get_redis pointed at
+    this test's rollback-wrapped session and flushed Redis DB instead of the
+    module-level connections app.deps builds from settings."""
+
+    async def _get_db():
+        yield db_session
+
+    async def _get_redis():
+        return redis_client
+
+    app.dependency_overrides[get_db] = _get_db
+    app.dependency_overrides[get_redis] = _get_redis
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport, base_url="http://test", headers={"X-API-Key": settings.api_key}
+    ) as ac:
+        yield ac
+    app.dependency_overrides.clear()

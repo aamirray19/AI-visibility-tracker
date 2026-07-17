@@ -48,7 +48,9 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['company_id'], ['companies.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('ix_scans_company_id_finished_at', 'scans', ['company_id', 'finished_at'], unique=False)
+    op.create_index(
+        'ix_scans_company_id_finished_at', 'scans', ['company_id', sa.text('finished_at DESC')], unique=False
+    )
     op.create_index('ix_scans_status', 'scans', ['status'], unique=False)
     op.create_table('company_profiles',
     sa.Column('id', sa.UUID(), server_default=sa.text('gen_random_uuid()'), nullable=False),
