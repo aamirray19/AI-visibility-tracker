@@ -61,12 +61,12 @@ Generate a structured company profile using gemini 2.5 flash model.
 Allow the user to verify and edit generated information.
 
 ### Editable Sections
-- Company
-- Website
 - Industry
 - Products
 - Competitors
 - Aliases
+
+Company and Website are resolved and locked in Phase 1; they are not editable here. Getting a different company requires restarting onboarding.
 
 ### Actions
 - Edit

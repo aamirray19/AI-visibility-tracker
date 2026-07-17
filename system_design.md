@@ -1,6 +1,6 @@
 # AI Brand Monitoring Platform — System Design Document
 
-**Version:** 1.4
+**Version:** 1.6
 **Status:** Draft
 **Source of truth:** PRD "AI Brand Monitoring Platform" + review answers
 **Stack:** FastAPI · Supabase (Postgres) · Redis Cloud (cache + ARQ) · React (Lovable) on Vercel · Render (API + worker)
@@ -313,6 +313,24 @@ Base `/api/v1`. Every endpoint except `/health` requires `X-API-Key` (§14).
 ### Progress delivery
 Poll `GET /scans/{id}` every 2 s while the status is non-terminal. It reads a Redis hash (`scan:{id}:progress`, TTL 60 s), so polling never touches Postgres. With a single user this is trivially cheap and avoids wiring Supabase Realtime + an anon key into the client. No WebSockets/SSE from Render.
 
+### 6.1 Frontend Structure
+
+Plain React SPA against §6 only — REST + `X-API-Key`, no Supabase SDK, no auth screens (§19). One page per lifecycle stage, matching the scan state machine (§5):
+
+| Page | Backed by | Notes |
+|---|---|---|
+| **Onboarding** | `POST /companies/resolve`, `POST /scans` | Name + website form. Shows the soft `COMPANY_MISMATCH` warning inline ("that doesn't look like the same company — continue anyway?"). If an active/recent scan exists, redirect straight to its current page instead of re-onboarding (§7.1). |
+| **Verification** | `GET/PATCH /scans/{id}/profile`, `POST /profile/confirm` | Editable sections for industry/products/competitors/aliases (add/edit/remove, per PRD Phase 3). Company and website are shown read-only — they were resolved and locked in Phase 1; getting a different company means restarting onboarding. After confirm, shows verifier `issues` inline with keep/remove per flagged item, then a second confirm to accept as-is. |
+| **Scope** | `PUT /scans/{id}/scope` | Checkbox list of the 9 monitoring categories, default all checked. |
+| **Progress** | `POST /scans/{id}/launch`, `GET /scans/{id}` (2 s poll) | Progress bar driven by `progress.{stage, done, total}`; cancel button (`DELETE /scans/{id}`). |
+| **Dashboard** | `GET /scans/{id}/dashboard` | Executive summary, leaderboard, competitor comparison / discovered-competitors (brand-only), sentiment, category performance, provider comparison, top sources (§7.8). One request, no client-side aggregation. |
+| **Prompt Explorer** | `GET /scans/{id}/prompts` (paginated), `GET /scans/{id}/prompts/{pid}` | Filters: category, provider, sentiment, mentioned. Row → both responses + evaluations + citations. |
+
+**State management:** no global store needed — each page owns its server state via a thin data-fetching layer (e.g. TanStack Query) keyed on `scan_id`; the 2 s poll on the Progress page is the only interval-based fetch. Client-side state is limited to in-progress edits on the Verification page before `PATCH` is called.
+
+**Routing:** `scan_id` in the URL (`/scans/:id/...`) so a page can always be reloaded or shared without losing place; the current `status` (§5) determines which page a stale/incomplete scan redirects to on load.
+
+
 ### Error contract
 ```json
 { "error": { "code": "COMPANY_MISMATCH",
@@ -332,8 +350,8 @@ No LLM. Runs synchronously in the request.
 1. **Website format:** require a scheme (default `https://`), a valid public-suffix host. Reject IPs, `localhost`, private ranges (SSRF guard — we fetch this URL).
 2. **Normalize domain:** lowercase, strip `www.`, reduce to eTLD+1 via `tldextract`. `https://www.Acme.com/pricing` → `acme.com`.
 3. **Normalize name:** lowercase, strip legal suffixes (`inc|ltd|llc|corp|gmbh|pvt|pte`), collapse punctuation/whitespace.
-4. **Resolve:** `GET` the homepage, 5 s timeout, 1 MB cap. Extract `<title>`, `og:site_name`, meta description. On failure, do **not** hard-fail — mark `unverified` and let Phase 2 work from name + domain alone. Many B2B sites are JS shells that yield nothing.
-5. **Mismatch check:** `rapidfuzz.token_set_ratio(name_norm, site_name)` < 60 **and** the domain doesn't contain the name token → `COMPANY_MISMATCH`. This is a **soft** error: the UI shows "that doesn't look like the same company — continue anyway?"
+4. **Resolve:** `GET` the homepage, 5 s timeout, 1 MB cap. Extract `<title>`, `og:site_name`, meta description, **and** the visible body text (strip `<nav>`/`<footer>`/`<script>`/`<style>`), truncated to ~4k chars. The metadata subset (title/og/meta) feeds the mismatch check below; the full extract — including body text — is cached (`cache:enrich:{domain}` is populated here, not re-fetched in Phase 2) and passed on to Phase 2 enrichment (§7.2), so Gemini has real product/industry signal instead of a name-only guess. On failure, do **not** hard-fail — mark `unverified` and let Phase 2 work from name + domain alone. Many B2B sites are JS shells that yield nothing, in which case Phase 2 falls back to name + domain only.
+5. **Mismatch check:** `rapidfuzz.token_set_ratio(name_norm, site_name)` < 60 **and** the domain doesn't contain the name token → `COMPANY_MISMATCH`. This is a **hard** error (per PRD): the request is rejected with `422` and the UI shows "that doesn't look like the same company — check the name and website" with no override. If the fuzzy check is ever found to false-positive in practice, revisit before softening it.
 6. **Upsert** `companies` on `domain`.
 
 **Scan reuse (replaces the old duplicate block):**
@@ -355,7 +373,7 @@ The Postgres rows are **not** deleted when the cache key expires — history is 
 
 ARQ job `enrich_company(scan_id)`. Model: **`gemini-2.5-flash`**, structured output (JSON schema), `temperature=0.2`, Google Search grounding enabled if available.
 
-Input: name, domain, scraped homepage text (truncated to ~4k chars). Output → `company_profiles` v1.
+Input: name, domain, the homepage body text extracted in §7.1 (~4k chars, already cached alongside the metadata — not re-fetched here). Output → `company_profiles` v1.
 
 | PRD edge case | Handling |
 |---|---|
@@ -385,9 +403,13 @@ On acceptance: flatten target + aliases + product names + competitors into `scan
 
 Scope is **injected into the prompt-generation prompt**, not used as a post-filter. Choosing "Pricing" + "Alternatives" makes the 50 prompts skew that way; it does not mean generating 50 generic prompts and discarding the ones that don't match.
 
+The 9 scope categories are a separate taxonomy from the 4 prompt categories in §7.5 and don't replace them: the `informational`/`commercial`/`competitor_discovery`/`product_specific` split and its 30/30/25/15 mix (the anti-gaming guarantee — most prompts don't name the brand) stay fixed regardless of which scope categories are selected. Scope only supplies topical guidance text *within* that fixed structure — e.g. "Pricing" nudges `commercial` prompts toward pricing questions; it never reallocates the category percentages. (Brand-only mode, §7.6, is the one place the mix itself changes, and that's driven by competitor count, not scope.)
+
 ### 7.5 Phase 5 — Prompt Generation
 
 ARQ job `generate_prompts(scan_id)`. Model: `gemini-2.5-flash`, `temperature=0.9`, structured output. Generate in **batches of ~15**, ask for 60, keep 50 — one long 50-item structured call degrades and starts repeating itself.
+
+**Deviation from PRD:** the PRD lists `Language` as prompt metadata. This design intentionally drops it — the `prompts` table (§4) has no `language` column, and scans are English-only (consistent with §1 Non-Goals: "Multi-language prompts"). Documented here so it reads as a deliberate v1 scope cut, not an oversight.
 
 **The rule that matters most in this system:** prompts must read like a real person talking to ChatGPT, and **most of them must not name the brand.** If all 50 prompts say "Is Acme good?", AI Visibility is trivially ~100% and the scan measures nothing. Enforced mix:
 
@@ -681,6 +703,8 @@ MODELS = {
 
 Adding a third execution provider later is a config line plus one adapter — the Model Comparison section picks it up automatically, because every metric is already grouped by `provider`.
 
+> **Open item — verify model IDs before building the adapter.** `gemma-4-31b-it` does not match any publicly documented Google AI Studio model as of this writing. Before implementation, confirm the exact, currently-available model string on the Google AI Studio model list (and likewise double-check `openai/gpt-oss-120b` and `llama-3.3-70b-versatile` against Groq's current model catalog). Since `MODELS` is the single place every call site reads the name from (§10), a wrong string here fails loudly and early rather than silently — but it should be caught in config review, not at first scan.
+
 ### 10.1 Key Pools (the credential router)
 
 Eleven keys, five named pools. A pool is the unit of capacity; a key is the unit of failure.
@@ -964,7 +988,26 @@ This is strictly better than the alternative. You never have to know the numbers
 Never set worker concurrency above what the rate limiter allows — you'd just be creating jobs that sleep.
 
 ### 15.3 Cost
+
 Order of magnitude: low tens of cents per scan on current open-model pricing. But the point of `ai_responses.cost_usd` → `scans.cost_usd` is that you **measure** it. Put it on an internal ops page from day one; it's the input to every pricing decision you'll eventually make.
+
+**Pricing table.** `cost_usd` is computed at write-time by the cost-tracking decorator (outermost layer, §10), from a static rate table keyed by model — not looked up from a provider API:
+
+```python
+# app/core/pricing.py
+PRICING_USD_PER_1K = {
+    "gemini-2.5-flash":          {"input": 0.000, "output": 0.000},  # fill in current rates
+    "gemma-4-31b-it":            {"input": 0.000, "output": 0.000},
+    "openai/gpt-oss-120b":       {"input": 0.000, "output": 0.000},
+    "llama-3.3-70b-versatile":   {"input": 0.000, "output": 0.000},
+}
+
+def estimate_cost_usd(model: str, tokens_in: int, tokens_out: int) -> float:
+    rates = PRICING_USD_PER_1K[model]  # missing model → fail loudly, don't silently cost $0
+    return (tokens_in / 1000) * rates["input"] + (tokens_out / 1000) * rates["output"]
+```
+
+Rates are updated by hand when a provider changes pricing — not worth an API lookup for a single-user tool with ~200 calls/scan. A model missing from the table should raise, not default to `$0` (a silent zero would quietly break the cost fuse in §14).
 
 ---
 
@@ -1085,4 +1128,36 @@ Everything is decided as of v1.5. Nothing is deferred to a future revision:
 - **Key pools.** All 11 keys provisioned; no fallback needed on provisioning timing.
 
 The rate-limit numbers deliberately aren't in here: the adaptive limiter (§15.1) reads them off each provider's response headers, so no limits page ever needs to be consulted and nothing goes stale when a tier changes. §15.1/§15.2's timing-budget discrepancy (TPM-bound estimate vs. the stated wall-clock) is a known open item, intentionally not resolved — actual throughput will be measured against real traffic rather than modeled further up front.
+
+---
+
+## 20. Testing Strategy
+
+Two tiers. The first is standard engineering hygiene; the second exists because this product's core output is an LLM's *judgment*, which unit tests can't catch drifting.
+
+### 20.1 Unit / integration tests (deterministic logic)
+
+High value, cheap, no LLM calls needed — mock the `LLMProvider` protocol (§10) at the boundary:
+
+| Area | What to test |
+|---|---|
+| Entity resolution (§11) | Match-order precedence, word-boundary guard against substring false positives ("notion" vs "notionally"), short-name exact-only rule, discovered-name dedupe/fuzzy collapse. |
+| Aggregation SQL (§12) | Each metric formula against a fixed fixture of `mentions`/`evaluations` rows — especially the R-denominator rule (only responses with an evaluation count) and Share of Voice including discovered companies. |
+| Idempotency | `ai_responses (prompt_id, provider)` and `evaluations (response_id)` unique constraints — re-running a job twice produces one row, not an error or a duplicate. |
+| Key-pool router (§10.1) | 429 → cooldown + fallthrough to next key; breaker opens after 5 consecutive failures; pool breaker only opens when every key is down; round-robin vs failover candidate ordering. |
+| Scan lifecycle (§5) | Every valid/invalid state transition, especially the two human gates and the `409` on `/launch` from a non-`scope_pending` state. |
+| Sweeper (§13.4) | Given a stalled scan fixture, reconcile re-enqueues exactly the missing jobs (idempotent `_job_id`) and doesn't duplicate work already done. |
+| Website validation / SSRF guard (§7.1, §14) | Rejects private/link-local/loopback IPs, non-http(s) schemes, redirect chains that leave the allowed host. |
+
+### 20.2 Evaluator quality — a golden set
+
+Unit tests can't catch "the eval prompt was edited and now sentiment reads differently" (§18's own example of what silently changes visibility numbers). Mitigation: maintain a small **golden set** of ~10–15 hand-labeled `(prompt, response, expected {sentiment, target_mentioned, recommended, rank_position})` fixtures, covering:
+- a clear positive/negative/neutral mention,
+- a response where the target isn't mentioned at all (checks the Stage B short-circuit, §7.9),
+- a ranked list (checks `rank_position` is read from real ordering, never inferred from prose),
+- a response naming an unknown/discovered company.
+
+Run this set through the live evaluator (Stage A + B) whenever the eval prompt template, model, or provider changes, and diff against expected output. This is not a CI gate on every commit (it costs real tokens and the model is non-deterministic) — run it manually or on a schedule, and treat a drifted result as a signal to review the prompt diff before shipping, per the `llm/prompts/*.jinja` convention in §18.
+
+---
 
