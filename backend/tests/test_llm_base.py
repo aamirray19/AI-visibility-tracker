@@ -7,10 +7,29 @@ from app.llm.base import (
     ProviderCallFailed,
     RateLimited,
     routed_complete,
+    strip_code_fence,
 )
 
 KEY_A = Key(id="k_a", secret="s_a", org="org_a")
 KEY_B = Key(id="k_b", secret="s_b", org="org_b")
+
+
+def test_strip_code_fence_removes_json_labeled_fence():
+    # Gemma (unlike strict Gemini JSON mode) sometimes wraps structured
+    # output in a markdown fence even when JSON-only output was requested --
+    # a real "trailing characters" ValidationError caught in Phase 21's live run.
+    fenced = '```json\n{"verdict": "ok"}\n```'
+    assert strip_code_fence(fenced) == '{"verdict": "ok"}'
+
+
+def test_strip_code_fence_removes_bare_fence():
+    fenced = '```\n{"verdict": "ok"}\n```'
+    assert strip_code_fence(fenced) == '{"verdict": "ok"}'
+
+
+def test_strip_code_fence_is_a_noop_on_bare_json():
+    bare = '{"verdict": "ok"}'
+    assert strip_code_fence(bare) == bare
 
 
 def make_response(model="gemini-2.5-flash"):

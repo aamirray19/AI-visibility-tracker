@@ -75,7 +75,7 @@ async def test_429_raises_rate_limited_with_retry_after(redis_client, monkeypatc
     provider = groq_mod.GroqProvider(redis_client, pool, "openai/gpt-oss-120b")
 
     with pytest.raises(RateLimited) as exc_info:
-        await provider._call(KEY, "hi", system=None, schema=None, tools=None, timeout=5.0)
+        await provider._call(KEY, "hi", system=None, schema=None, tools=None, temperature=None, timeout=5.0)
     assert exc_info.value.retry_after_s == 7
 
 
@@ -88,7 +88,7 @@ async def test_401_raises_permanent_key_failure(redis_client, monkeypatch):
     provider = groq_mod.GroqProvider(redis_client, pool, "openai/gpt-oss-120b")
 
     with pytest.raises(PermanentKeyFailure):
-        await provider._call(KEY, "hi", system=None, schema=None, tools=None, timeout=5.0)
+        await provider._call(KEY, "hi", system=None, schema=None, tools=None, temperature=None, timeout=5.0)
 
 
 async def test_spend_limit_block_raises_permanent_key_failure(redis_client, monkeypatch):
@@ -100,7 +100,7 @@ async def test_spend_limit_block_raises_permanent_key_failure(redis_client, monk
     provider = groq_mod.GroqProvider(redis_client, pool, "openai/gpt-oss-120b")
 
     with pytest.raises(PermanentKeyFailure):
-        await provider._call(KEY, "hi", system=None, schema=None, tools=None, timeout=5.0)
+        await provider._call(KEY, "hi", system=None, schema=None, tools=None, temperature=None, timeout=5.0)
 
 
 async def test_500_raises_provider_call_failed(redis_client, monkeypatch):
@@ -112,4 +112,4 @@ async def test_500_raises_provider_call_failed(redis_client, monkeypatch):
     provider = groq_mod.GroqProvider(redis_client, pool, "openai/gpt-oss-120b")
 
     with pytest.raises(ProviderCallFailed):
-        await provider._call(KEY, "hi", system=None, schema=None, tools=None, timeout=5.0)
+        await provider._call(KEY, "hi", system=None, schema=None, tools=None, temperature=None, timeout=5.0)

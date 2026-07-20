@@ -3,11 +3,13 @@ import os
 import pytest
 import pytest_asyncio
 import redis.asyncio as redis_asyncio
+from arq import create_pool
+from arq.connections import RedisSettings
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.deps import get_db, get_redis
+from app.deps import get_arq_redis, get_db, get_redis
 from app.main import app
 
 TEST_DATABASE_URL = os.environ.get(
@@ -46,10 +48,17 @@ async def redis_client():
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession, redis_client):
-    """An httpx client against the real app, with get_db/get_redis pointed at
-    this test's rollback-wrapped session and flushed Redis DB instead of the
-    module-level connections app.deps builds from settings."""
+async def arq_pool(redis_client):
+    pool = await create_pool(RedisSettings.from_dsn(TEST_REDIS_URL))
+    yield pool
+    await pool.aclose()
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession, redis_client, arq_pool):
+    """An httpx client against the real app, with get_db/get_redis/get_arq_redis
+    pointed at this test's rollback-wrapped session and flushed Redis DB
+    instead of the module-level connections app.deps builds from settings."""
 
     async def _get_db():
         yield db_session
@@ -57,8 +66,12 @@ async def client(db_session: AsyncSession, redis_client):
     async def _get_redis():
         return redis_client
 
+    async def _get_arq_redis():
+        return arq_pool
+
     app.dependency_overrides[get_db] = _get_db
     app.dependency_overrides[get_redis] = _get_redis
+    app.dependency_overrides[get_arq_redis] = _get_arq_redis
     transport = ASGITransport(app=app)
     async with AsyncClient(
         transport=transport, base_url="http://test", headers={"X-API-Key": settings.api_key}

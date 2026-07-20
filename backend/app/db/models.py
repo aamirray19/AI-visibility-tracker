@@ -54,7 +54,9 @@ class Scan(Base):
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False, server_default="0")
     started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (

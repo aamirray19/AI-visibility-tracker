@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     redis_url: str
     api_key: str
     cors_origins: str = "http://localhost:5173"
+    sentry_dsn: str = ""  # §16: empty disables Sentry (dev/test default)
 
     # Key pools (§10.1). Comma-separated: id:secret:org
     google_exec_keys: str = ""

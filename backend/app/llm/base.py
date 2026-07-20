@@ -1,5 +1,6 @@
 import asyncio
 import random
+import re
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
@@ -8,6 +9,20 @@ from pydantic import BaseModel
 from app.core import pricing
 from app.core.circuit import record_failure, record_success
 from app.core.keypool import Key, KeyPool
+
+_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", re.DOTALL)
+
+
+def strip_code_fence(text: str) -> str:
+    """Some models (notably Gemma, less strict than Gemini's true JSON mode)
+    wrap structured output in a markdown code fence even when JSON-only
+    output was requested, breaking every `model_validate_json(text)` call
+    site with "trailing characters" -- a real failure caught in Phase 21's
+    live run. A no-op on already-bare JSON, so every caller can apply this
+    unconditionally."""
+    stripped = text.strip()
+    match = _CODE_FENCE_RE.match(stripped)
+    return match.group(1).strip() if match else stripped
 
 
 class LLMResponse(BaseModel):
@@ -18,10 +33,12 @@ class LLMResponse(BaseModel):
     model: str
     citations: list[dict] = []
     cost_usd: float = 0.0
+    key_id: str | None = None  # which pool key served this (never the secret) -- §10.1
 
 
 class LLMProvider(Protocol):
     name: str
+    model: str
 
     async def complete(
         self,
@@ -30,6 +47,7 @@ class LLMProvider(Protocol):
         system: str | None = None,
         schema: type[BaseModel] | None = None,
         tools: list[str] | None = None,
+        temperature: float | None = None,
         timeout: float = 60.0,
     ) -> LLMResponse: ...
 
@@ -106,6 +124,7 @@ async def routed_complete(
             response.cost_usd = pricing.estimate_cost_usd(
                 response.model, response.tokens_in or 0, response.tokens_out or 0
             )
+            response.key_id = key.id
             return response
         if attempts_used >= max_retries:
             raise last_error

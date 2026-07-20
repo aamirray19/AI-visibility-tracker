@@ -1,0 +1,59 @@
+envVarGroups:
+  - name: brandmon-secrets
+    envVars:
+      - key: DATABASE_URL # Supabase pooler, transaction mode, port 6543 (§3)
+        sync: false
+      - key: REDIS_URL # rediss://... Redis Cloud, same region as Render (§3)
+        sync: false
+      - key: API_KEY # shared secret for X-API-Key
+        sync: false
+      - key: CORS_ORIGINS # the deployed Vercel domain
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: GOOGLE_EXEC_KEYS # id:secret:org,... (§10.1, §17)
+        sync: false
+      - key: GOOGLE_FLASH_KEYS
+        sync: false
+      - key: GROQ_EXEC_KEYS
+        sync: false
+      - key: GROQ_EVAL_A_KEYS
+        sync: false
+      - key: GROQ_EVAL_B_KEYS
+        sync: false
+
+services:
+  - type: web
+    name: brandmon-api
+    runtime: python
+    plan: starter
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVarGroups:
+      - brandmon-secrets
+
+  - type: worker
+    name: brandmon-worker-pipeline
+    runtime: python
+    # §3: must be a paid instance -- a free worker spins down and every scan
+    # dies mid-flight. This is the queue that runs the bulk of the pipeline.
+    plan: standard
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: arq app.worker.settings.PipelineSettings
+    envVarGroups:
+      - brandmon-secrets
+
+  - type: worker
+    name: brandmon-worker-interactive
+    runtime: python
+    # Small instance -- only enrichment, verification, and the sweeper cron
+    # run on this queue (§8).
+    plan: starter
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: arq app.worker.settings.InteractiveSettings
+    envVarGroups:
+      - brandmon-secrets

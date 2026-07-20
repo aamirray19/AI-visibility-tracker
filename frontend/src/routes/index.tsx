@@ -1,7 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
-import { toast } from 'sonner';
 import { ArrowRight, Eye } from 'lucide-react';
+import { ApiError } from '@/lib/api';
+import { statusToPath } from '@/lib/status';
+import { useCreateScan, useResolveCompany } from '@/hooks/api';
 
 export const Route = createFileRoute('/')({
   head: () => ({
@@ -18,19 +20,39 @@ export const Route = createFileRoute('/')({
 });
 
 function IndexPage() {
-  const [value, setValue] = useState('');
+  const navigate = useNavigate();
+  const [name, setName] = useState('');
+  const [website, setWebsite] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  const onSubmit = (e: FormEvent) => {
+  const resolveCompany = useResolveCompany();
+  const createScan = useCreateScan();
+  const submitting = resolveCompany.isPending || createScan.isPending;
+
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const v = value.trim();
-    if (!v) {
-      toast.error('Enter a brand or domain first');
+    setError(null);
+
+    const trimmedName = name.trim();
+    const trimmedWebsite = website.trim();
+    if (!trimmedName || !trimmedWebsite) {
+      setError('Enter both a company name and website.');
       return;
     }
-    toast.success(`Tracking ${v}`, {
-      description: "We'll notify you when monitoring is ready.",
-    });
-    setValue('');
+
+    try {
+      await resolveCompany.mutateAsync({ name: trimmedName, website: trimmedWebsite });
+      const scan = await createScan.mutateAsync({ name: trimmedName, website: trimmedWebsite });
+      navigate({ to: statusToPath(scan.id, scan.status) });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'COMPANY_MISMATCH') {
+        setError("That doesn't look like the same company — check the name and website.");
+      } else if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
+    }
   };
 
   return (
@@ -82,28 +104,44 @@ function IndexPage() {
         </h1>
 
         <p className="mt-6 max-w-xl text-base text-bs-muted sm:text-lg">
-          Enter a brand or domain — BrandSightAI watches mentions, sentiment, and
+          Enter your company name and website — BrandSightAI watches mentions, sentiment, and
           competitive moves so you don't have to.
         </p>
 
         <form onSubmit={onSubmit} className="mt-10 w-full max-w-xl">
-          <div className="group relative flex items-center rounded-2xl border border-white/10 bg-white/[0.03] p-1.5 backdrop-blur transition-all focus-within:border-bs-purple/60 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--bs-purple)_18%,transparent),0_0_40px_-8px_var(--bs-purple)] hover:border-white/20">
+          <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur transition-all focus-within:border-bs-purple/60 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--bs-purple)_18%,transparent),0_0_40px_-8px_var(--bs-purple)] hover:border-white/20">
             <input
               type="text"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="Enter a brand or domain (e.g. Salesforce, HubSpot)"
-              className="flex-1 bg-transparent px-4 py-3 text-base text-bs-fg placeholder:text-bs-muted/60 focus:outline-none"
-              aria-label="Brand or domain to monitor"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Company name (e.g. Notion)"
+              className="w-full rounded-xl bg-transparent px-3 py-2 text-base text-bs-fg placeholder:text-bs-muted/60 focus:outline-none"
+              aria-label="Company name"
+              disabled={submitting}
+            />
+            <input
+              type="text"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              placeholder="Website (e.g. notion.so)"
+              className="w-full rounded-xl bg-transparent px-3 py-2 text-base text-bs-fg placeholder:text-bs-muted/60 focus:outline-none"
+              aria-label="Company website"
+              disabled={submitting}
             />
             <button
               type="submit"
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-br from-bs-purple to-bs-purple-deep px-5 py-3 text-sm font-medium text-white shadow-[0_8px_30px_-8px_var(--bs-purple)] transition-transform hover:-translate-y-px active:translate-y-0"
+              disabled={submitting}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-bs-purple to-bs-purple-deep px-5 py-3 text-sm font-medium text-white shadow-[0_8px_30px_-8px_var(--bs-purple)] transition-transform hover:-translate-y-px active:translate-y-0 disabled:opacity-60"
             >
-              Track brand
+              {submitting ? 'Checking…' : 'Track brand'}
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
+          {error && (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
           <p className="mt-3 text-xs text-bs-muted/70">
             Try: Salesforce · HubSpot · Notion · Linear
           </p>

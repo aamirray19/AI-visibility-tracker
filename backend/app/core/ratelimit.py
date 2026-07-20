@@ -4,6 +4,14 @@ from uuid import uuid4
 LEARNED_LIMIT_TTL_S = 300  # decays back to the cold-start floor if headers stop arriving
 
 
+def _decode(value: str | bytes) -> str:
+    """The real ARQ worker's ctx["redis"] returns bytes (decode_responses is
+    off by default -- ARQ itself needs raw bytes for job pickling), unlike
+    the decoded test-fixture client every test in this suite uses. Only this
+    call site parses a member's contents, so only it needs this."""
+    return value.decode() if isinstance(value, bytes) else value
+
+
 async def try_acquire(redis, key_id: str, rpm_floor: int, window_s: int = 60, *, commit: bool = True) -> bool:
     """Non-blocking sliding-window request limiter, keyed per key_id (§9).
     Returns False so the pool can try the NEXT key instead of sleeping on a saturated one.
@@ -43,7 +51,7 @@ async def try_acquire_tokens(
         pipe.zremrangebyscore(k, 0, now - window_s)
         pipe.zrange(k, 0, -1)
         _, entries = await pipe.execute()
-    used = sum(int(member.rsplit(":", 1)[1]) for member in entries)
+    used = sum(int(_decode(member).rsplit(":", 1)[1]) for member in entries)
     if used + est_tokens > tpm:
         return False
     if commit:

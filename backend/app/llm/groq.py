@@ -40,10 +40,13 @@ class GroqProvider:
         system: str | None = None,
         schema: type[BaseModel] | None = None,
         tools: list[str] | None = None,
+        temperature: float | None = None,
         timeout: float = 60.0,
     ) -> LLMResponse:
         async def raw_call(key: Key) -> LLMResponse:
-            return await self._call(key, prompt, system=system, schema=schema, tools=tools, timeout=timeout)
+            return await self._call(
+                key, prompt, system=system, schema=schema, tools=tools, temperature=temperature, timeout=timeout
+            )
 
         return await routed_complete(self.redis, self.pool, raw_call)
 
@@ -55,6 +58,7 @@ class GroqProvider:
         system: str | None,
         schema: type[BaseModel] | None,
         tools: list[str] | None,
+        temperature: float | None,
         timeout: float,
     ) -> LLMResponse:
         messages = []
@@ -67,6 +71,8 @@ class GroqProvider:
             body["response_format"] = {"type": "json_object"}
         if tools and "web_search" in tools:
             body["tools"] = [{"type": "browser_search"}]
+        if temperature is not None:
+            body["temperature"] = temperature
 
         started = time.monotonic()
         try:
