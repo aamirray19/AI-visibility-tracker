@@ -32,6 +32,14 @@ def test_strip_code_fence_is_a_noop_on_bare_json():
     assert strip_code_fence(bare) == bare
 
 
+def test_strip_code_fence_removes_stray_trailing_fence_with_no_opening_fence():
+    # Real failure from a live Gemma prompt-gen call: no opening ``` at all,
+    # just a stray closing fence appended after the JSON -- the old paired
+    # regex required both ends to match and left this one untouched.
+    stray = '{"verdict": "ok"}\n```'
+    assert strip_code_fence(stray) == '{"verdict": "ok"}'
+
+
 def make_response(model="gemini-2.5-flash"):
     return LLMResponse(text="ok", tokens_in=100, tokens_out=50, latency_ms=10, model=model)
 

@@ -1,5 +1,6 @@
 from httpx import ASGITransport, AsyncClient
 
+from app.config import settings
 from app.main import app
 
 
@@ -23,9 +24,9 @@ async def test_cors_preflight_allowed_from_allowlisted_origin():
         response = await client.options(
             "/api/v1/companies/resolve",
             headers={
-                "Origin": "http://localhost:5173",
+                "Origin": settings.cors_origins,
                 "Access-Control-Request-Method": "POST",
             },
         )
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["access-control-allow-origin"] == settings.cors_origins

@@ -10,7 +10,8 @@ from app.core import pricing
 from app.core.circuit import record_failure, record_success
 from app.core.keypool import Key, KeyPool
 
-_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?(.*?)\n?```\s*$", re.DOTALL)
+_LEADING_FENCE_RE = re.compile(r"^```(?:json)?\s*\n?")
+_TRAILING_FENCE_RE = re.compile(r"\n?```\s*$")
 
 
 def strip_code_fence(text: str) -> str:
@@ -18,11 +19,15 @@ def strip_code_fence(text: str) -> str:
     wrap structured output in a markdown code fence even when JSON-only
     output was requested, breaking every `model_validate_json(text)` call
     site with "trailing characters" -- a real failure caught in Phase 21's
-    live run. A no-op on already-bare JSON, so every caller can apply this
+    live run. Leading and trailing fences are stripped independently since
+    some responses carry only a stray trailing ``` with no matching opening
+    fence (also seen live) -- a single paired regex misses that case
+    entirely. A no-op on already-bare JSON, so every caller can apply this
     unconditionally."""
     stripped = text.strip()
-    match = _CODE_FENCE_RE.match(stripped)
-    return match.group(1).strip() if match else stripped
+    stripped = _LEADING_FENCE_RE.sub("", stripped, count=1)
+    stripped = _TRAILING_FENCE_RE.sub("", stripped, count=1)
+    return stripped.strip()
 
 
 class LLMResponse(BaseModel):
