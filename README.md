@@ -4,6 +4,39 @@
 
 AI Visibility Tracker monitors how AI models perceive and recommend a company. A user submits a company name and website, verifies an AI-generated company profile, and launches a scan. The platform generates ~50 realistic user prompts, queries multiple LLM providers in parallel, evaluates every response for sentiment/mentions/ranking, and presents brand visibility, sentiment, and competitor insights on a dashboard.
 
+## Getting Started
+
+**Prerequisites:** Docker, Python 3.13, Node 20, a Google AI Studio API key, and a Groq API key.
+
+Onboarding (company resolution + scan creation) works with no LLM keys at all. Everything past that — enrichment, verification, prompt generation, execution, evaluation — calls Google AI Studio / Groq for real; there is no mock mode outside the test suite, so a scan will stall right after creation without real keys.
+
+1. **Configure env vars** — one shared `.env.example`, copied into both apps
+   ```bash
+   cp .env.example backend/.env    # fill in the 5 GOOGLE_*/GROQ_*_KEYS with your raw API keys
+   cp .env.example frontend/.env   # defaults already match the backend above
+   ```
+
+2. **Start everything**
+   ```bash
+   docker compose up --build
+   ```
+   This builds and runs Postgres, Redis, migrations, the API, both ARQ workers, and the frontend — one command, `docker-compose.yml` at the repo root.
+
+3. Open `http://localhost:8080`, submit a company name + website, and walk through onboarding → verification → scope → launch → dashboard.
+
+### Running natively instead (hot reload)
+
+For active backend/frontend development, running processes directly avoids a rebuild on every save:
+
+```bash
+cd backend && docker-compose up -d              # Postgres + Redis only
+cd backend && pip install -r requirements-dev.txt && alembic upgrade head
+cd backend && uvicorn app.main:app --reload      # http://localhost:8000
+cd backend && arq app.worker.settings.InteractiveSettings   # separate terminal
+cd backend && arq app.worker.settings.PipelineSettings      # separate terminal
+cd frontend && npm install && npm run dev        # http://localhost:8080
+```
+
 <!--
 ## Demo video
 

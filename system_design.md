@@ -1031,15 +1031,18 @@ REDIS_URL=                        # rediss://...
 API_KEY=                          # shared secret for X-API-Key
 CORS_ORIGINS=https://app.yourdomain.com
 
-# Providers — key pools (§10.1). Comma-separated: id:secret:org
-# 11 keys, 5 pools. `org` = Groq organization / Google Cloud project — keys sharing
-# an org share a rate-limit bucket, which is what RATE_LIMIT_SCOPE keys off.
-GOOGLE_EXEC_KEYS=g_exec_1:AIza...:projA,g_exec_2:AIza...:projB,g_exec_3:AIza...:projC
-GOOGLE_FLASH_KEYS=g_flash_1:AIza...:projD,g_flash_2:AIza...:projE
+# Providers — key pools (§10.1). Comma-separated raw API keys, one per account:
+# GOOGLE_EXEC_KEYS=AIza...,AIza...,AIza...
+# 11 keys, 5 pools. Each key is auto-assigned a short id (`{pool}_{n}`) and
+# `org` defaults to that id — every key is treated as its own bucket, which
+# is the correct assumption as long as key↔account stays 1:1 (the normal
+# case: separate Groq orgs / separate Google Cloud projects per key).
+GOOGLE_EXEC_KEYS=AIza...,AIza...,AIza...
+GOOGLE_FLASH_KEYS=AIza...,AIza...
 
-GROQ_EXEC_KEYS=groq_exec_1:gsk_...:orgA,groq_exec_2:gsk_...:orgB
-GROQ_EVAL_A_KEYS=groq_eval_a1:gsk_...:orgC,groq_eval_a2:gsk_...:orgD
-GROQ_EVAL_B_KEYS=groq_eval_b1:gsk_...:orgE,groq_eval_b2:gsk_...:orgF
+GROQ_EXEC_KEYS=gsk_...,gsk_...
+GROQ_EVAL_A_KEYS=gsk_...,gsk_...
+GROQ_EVAL_B_KEYS=gsk_...,gsk_...
 
 POOL_GOOGLE_EXEC_STRATEGY=round_robin
 POOL_GOOGLE_FLASH_STRATEGY=failover      # v1.5: 2 keys, fallback only — low volume, no need for round_robin
@@ -1047,8 +1050,9 @@ POOL_GROQ_EXEC_STRATEGY=round_robin      # 2 separate orgs → use both buckets 
 POOL_GROQ_EVAL_A_STRATEGY=round_robin
 POOL_GROQ_EVAL_B_STRATEGY=round_robin
 RATE_LIMIT_SCOPE=key                     # valid because key↔org is 1:1 (6 Groq accounts,
-                                         # 5 Google projects). If any two keys ever share an
-                                         # org/project, switch to 'org'.
+                                         # 5 Google projects). If two keys ever share an
+                                         # account, they'll need to be treated as one
+                                         # capacity unit — not auto-detected today.
 
 MODEL_ENRICHMENT=gemini-2.5-flash
 MODEL_VERIFICATION=gemini-2.5-flash

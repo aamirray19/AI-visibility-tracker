@@ -14,14 +14,18 @@ class Key:
     org: str
 
 
-def parse_keys(raw: str) -> list[Key]:
-    """Parse the `id:secret:org,id:secret:org` env format (§17). Empty string -> no keys."""
+def parse_keys(raw: str, pool_name: str) -> list[Key]:
+    """Parse the key-pool env format (§17): comma-separated raw API keys,
+    e.g. `AIzaSy...,AIzaSy...`. Each key is auto-assigned an id (`{pool_name}_{n}`)
+    and org defaults to that id -- every key is its own bucket, the common
+    case per §10.1. Empty string -> no keys."""
     if not raw.strip():
         return []
     keys = []
-    for entry in raw.split(","):
-        id_, secret, org = entry.strip().split(":", 2)
-        keys.append(Key(id=id_, secret=secret, org=org))
+    for i, entry in enumerate(raw.split(","), start=1):
+        secret = entry.strip()
+        id_ = f"{pool_name}_{i}"
+        keys.append(Key(id=id_, secret=secret, org=id_))
     return keys
 
 
@@ -112,7 +116,7 @@ def build_pools(settings) -> dict[str, KeyPool]:
     return {
         name: KeyPool(
             name,
-            parse_keys(getattr(settings, keys_attr)),
+            parse_keys(getattr(settings, keys_attr), name),
             getattr(settings, strategy_attr),
             settings.rate_limit_cold_start_rpm,
             settings.rate_limit_cold_start_tpm,

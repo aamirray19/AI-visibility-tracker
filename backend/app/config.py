@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     sentry_dsn: str = ""  # §16: empty disables Sentry (dev/test default)
 
-    # Key pools (§10.1). Comma-separated: id:secret:org
+    # Key pools (§10.1). Comma-separated raw API keys, e.g. "AIzaSy...,AIzaSy..."
     google_exec_keys: str = ""
     google_flash_keys: str = ""
     groq_exec_keys: str = ""

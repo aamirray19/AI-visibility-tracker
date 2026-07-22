@@ -9,13 +9,16 @@ KEY_A = Key(id="k_a", secret="secret_a", org="org_a")
 KEY_B = Key(id="k_b", secret="secret_b", org="org_b")
 
 
-def test_parse_keys_reads_id_secret_org_csv():
-    keys = parse_keys("k_a:secret_a:org_a,k_b:secret_b:org_b")
-    assert keys == [KEY_A, KEY_B]
+def test_parse_keys_reads_bare_csv_and_auto_assigns_id_and_org():
+    keys = parse_keys("secret_a,secret_b", "pool")
+    assert keys == [
+        Key(id="pool_1", secret="secret_a", org="pool_1"),
+        Key(id="pool_2", secret="secret_b", org="pool_2"),
+    ]
 
 
 def test_parse_keys_empty_string_is_no_keys():
-    assert parse_keys("") == []
+    assert parse_keys("", "pool") == []
 
 
 async def test_acquire_returns_a_healthy_key(redis_client):

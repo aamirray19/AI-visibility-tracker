@@ -4,15 +4,17 @@
 AI Brand Monitoring Platform: submit a company + website, an LLM pipeline (Gemini for enrichment/verification/prompt-gen, Gemma + GPT-OSS for execution, Llama 3.3 for evaluation) generates ~50 prompts, queries them across two providers, evaluates the responses, and surfaces AI-visibility/sentiment/competitor metrics on a dashboard. Backend: FastAPI + ARQ worker (two queues) + SQLAlchemy async/asyncpg + Alembic, on Supabase Postgres + Redis. Frontend: React 19 / TanStack Start+Router+Query + Tailwind v4 + shadcn, calling the backend only via REST + `X-API-Key` (no Supabase/LLM access from the client, no auth — single-user by design).
 
 ## Required startup
-1. Read `handoff.md` for context left by the previous session (currently empty — nothing handed off yet).
+1. Read `handoff.md` for context left by the previous session.
 2. Read `plan.md` for current phase status (checkboxes = done/pending) and `system_design.md` for architecture — it is the source of truth; re-read the relevant section before improvising on any ambiguity.
 3. Read `PRD.md` for product intent if the task touches user-facing behavior.
-4. `cd backend && docker-compose up -d` (local Postgres 15 + Redis 7).
-5. `pip install -r backend/requirements-dev.txt` and `npm install --prefix frontend` if dependencies changed.
+4. `.env.example` at the repo root has every var both apps need (backend + frontend) — copy it into `backend/.env` and `frontend/.env` and fill in real values if they don't already exist.
+5. `docker compose up --build` from the repo root boots the whole stack (Postgres, Redis, migrations, API, both ARQ workers, frontend) in one command. For active backend/frontend iteration, run natively instead (see Commands) — no image rebuild per save.
 6. Do not write feature code until you've checked `plan.md` for which phase/task this falls under and whether it's already marked done.
 
 ## Commands
-- Backend install/setup: `cd backend && docker-compose up -d && pip install -r requirements-dev.txt && alembic upgrade head`
+- Whole stack, one command: `docker compose up --build` (repo root `docker-compose.yml`)
+- Backend-only infra for native dev: `cd backend && docker-compose up -d` (Postgres + Redis only, no rebuild needed on save)
+- Backend install/setup: `cd backend && pip install -r requirements-dev.txt && alembic upgrade head`
 - Backend tests: `cd backend && pytest` (needs `TEST_DATABASE_URL`, `TEST_REDIS_URL` — see `tests/conftest.py`, defaults match `docker-compose.yml`)
 - Backend lint: `cd backend && ruff check .`
 - Backend dev server: `cd backend && uvicorn app.main:app --reload`
@@ -42,10 +44,10 @@ Done means:
 3. The phase's own "Testing checkpoint" in `plan.md` passes when a plan phase is being completed
 4. No provider secret leaked into a log line, Redis key, or DB row (grep-check when touching key-pool/LLM code)
 5. `plan.md`'s checkbox for the task is updated to reflect what was actually done
-6. `handoff.md` is updated with anything the next session needs to know (blocked items, in-flight state, follow-ups) — it's currently empty, so this is the first thing you'll write to it
+6. `handoff.md` is updated with anything the next session needs to know (blocked items, in-flight state, follow-ups)
 
 ## Topic docs
 - Product requirements: `PRD.md`
 - Architecture & design (source of truth): `system_design.md`
 - Implementation roadmap & phase status: `plan.md`
-- Deployment config: `render.yaml`
+- Local stack: root `docker-compose.yml` + `.env.example` (deployment config was deliberately set aside for now — `render.yaml` was removed, not lost; ask before assuming it should come back)
