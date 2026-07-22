@@ -1,18 +1,7 @@
-FROM node:20-alpine
-
+FROM node:20-slim
 WORKDIR /app
-
-COPY package*.json ./
-
+COPY package.json package-lock.json ./
 RUN npm install
-
 COPY . .
-
-# Build for production
-# RUN npm run build
-
-# Expose port 3000
-EXPOSE 3000
-
-# Start dev server for now (eases development)
+EXPOSE 8080
 CMD ["npm", "run", "dev"]

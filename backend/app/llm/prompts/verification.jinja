@@ -1,0 +1,31 @@
+Review this company profile for accuracy before it is used to monitor
+AI-generated answers about {{ company_name }}.
+
+Industry: {{ profile.industry or "unknown" }}
+Description: {{ profile.description or "none" }}
+
+Products:
+{% for p in profile.products %}
+- {{ p.name }}{% if p.description %}: {{ p.description }}{% endif %}
+{% else %}
+(none listed)
+{% endfor %}
+
+Competitors:
+{% for c in profile.competitors %}
+- {{ c.name }}{% if c.domain %} ({{ c.domain }}){% endif %}
+{% else %}
+(none listed)
+{% endfor %}
+
+Aliases: {{ profile.aliases | join(", ") if profile.aliases else "none" }}
+
+Flag any listed competitor that isn't a real competitor of {{ company_name }},
+any product that doesn't exist, and any alias that doesn't actually belong to
+this company. Be specific and skeptical, but don't invent problems that
+aren't there.
+
+Set `verdict` to "ok" if everything looks correct, or "issues_found" if you
+have concerns. If "issues_found", list each issue with which field it's in
+(`industry`, `description`, `aliases`, `products`, or `competitors`), the
+exact value you're flagging, and a short reason.

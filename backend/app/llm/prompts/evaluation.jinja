@@ -1,0 +1,27 @@
+Below is an AI assistant's response to the prompt: "{{ prompt_text }}"
+
+<response>
+{{ response_text }}
+</response>
+
+{% if target_mentioned %}
+The company "{{ target_name }}" is mentioned in this response. Evaluate:
+
+- `sentiment`: the tone toward {{ target_name }} specifically **as discussed
+  in this response** -- not the overall tone of the text. positive, neutral,
+  or negative.
+- `recommended`: does the response recommend or endorse {{ target_name }}?
+- `rank_position`: only if the response contains an actual ordered or
+  numbered list and {{ target_name }} appears in it -- its 1-based position.
+  Otherwise null. Never infer a rank from prose order.
+- `mentioned_companies`: every company name mentioned anywhere in the
+  response (including {{ target_name }} and any others), exactly as they
+  appear in the text.
+- `confidence`: how confident you are in this evaluation, 0.0-1.0.
+- `reasoning`: a short explanation for your sentiment/recommendation call.
+{% else %}
+The company "{{ target_name }}" is NOT mentioned in this response. Do not
+evaluate sentiment or recommendation for it -- set `sentiment` to null,
+`recommended` to false, and `rank_position` to null. Just list every company
+name mentioned anywhere in the response as `mentioned_companies`.
+{% endif %}

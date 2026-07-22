@@ -1,98 +1,77 @@
-"""
-FastAPI application entry point.
-Includes: Bearer token auth, CORS restriction, rate limiting, health endpoint.
-"""
-import logging
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+import re
 
-from fastapi import FastAPI, Request, HTTPException, Security
+import redis.asyncio as redis_asyncio
+import sentry_sdk
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from structlog.contextvars import bind_contextvars, clear_contextvars
 
-from app.api import campaigns
-from app.core.config import settings
-from app.core.limiter import limiter
+from app.api.v1 import companies, dashboard, profiles, prompts, scans, sources
+from app.config import settings
+from app.core.errors import register_error_handlers
+from app.core.logging import configure_logging
+from app.deps import get_db, get_redis
 
-#Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
+configure_logging()
 
+if settings.sentry_dsn:
+    sentry_sdk.init(dsn=settings.sentry_dsn, traces_sample_rate=0.1)
 
-#Auth helper
-_bearer = HTTPBearer(auto_error=False)
-
-
-def require_auth(credentials: HTTPAuthorizationCredentials = Security(_bearer)):
-    """
-    Bearer-token guard. Skipped entirely when API_SECRET_KEY is empty (dev mode).
-    Set API_SECRET_KEY in .env to enable.
-    """
-    if not settings.API_SECRET_KEY:
-        return  # auth disabled in dev
-    if credentials is None or credentials.credentials != settings.API_SECRET_KEY:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-
-
-#App lifecycle
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("BrandSight AI API starting up")
-    yield
-    logger.info("BrandSight AI API shutting down")
-
-
-#App
-app = FastAPI(
-    title="BrandSight AI – Campaign Tracker API",
-    description="Track brand visibility across AI platforms.",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-#Rate limit error handler
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
+app = FastAPI(title="AI Visibility Tracker")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
-    allow_credentials=True,
+    allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-#Root endpoint
-@app.get("/", tags=["system"])
-async def root():
-    return {
-        "message": "Welcome to BrandSight AI API. Visit /docs for documentation.",
-        "status": "active"
-    }
+_SCAN_ID_PATTERN = re.compile(r"/scans/([0-9a-fA-F-]{36})")
 
 
-#Health endpoint
-@app.get("/health", tags=["system"])
-async def health_check():
-    return {
-        "status": "ok",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": "1.0.0",
-    }
+@app.middleware("http")
+async def bind_scan_id(request: Request, call_next) -> Response:
+    """§16: binds `scan_id` as the correlation id for every log line emitted
+    while handling this request. Regex'd off the raw path rather than
+    request.path_params, since BaseHTTPMiddleware runs before routing
+    resolves path params."""
+    match = _SCAN_ID_PATTERN.search(request.url.path)
+    if match:
+        bind_contextvars(scan_id=match.group(1))
+    try:
+        return await call_next(request)
+    finally:
+        clear_contextvars()
 
 
-#Routes
-app.include_router(
-    campaigns.router,
-    prefix="/api",
-    tags=["campaigns"],
-    dependencies=[Security(require_auth)],  
-)
+register_error_handlers(app)
+
+app.include_router(companies.router, prefix="/api/v1")
+app.include_router(scans.router, prefix="/api/v1")
+app.include_router(profiles.router, prefix="/api/v1")
+app.include_router(sources.router, prefix="/api/v1")
+app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(prompts.router, prefix="/api/v1")
+
+
+@app.get("/health")
+async def health(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    redis_client: redis_asyncio.Redis = Depends(get_redis),
+) -> dict:
+    checks = {"database": "ok", "redis": "ok"}
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception:
+        checks["database"] = "error"
+    try:
+        await redis_client.ping()
+    except Exception:
+        checks["redis"] = "error"
+    degraded = any(v == "error" for v in checks.values())
+    if degraded:
+        response.status_code = 503
+    return {"status": "degraded" if degraded else "ok", "checks": checks}

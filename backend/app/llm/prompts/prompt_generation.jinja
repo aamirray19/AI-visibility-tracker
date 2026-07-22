@@ -1,0 +1,28 @@
+Generate {{ count }} realistic questions a person might type into an AI
+assistant (like ChatGPT), in the "{{ category }}" style described below, in
+the space that {{ company_name }}{% if industry %} ({{ industry }}){% endif %}
+operates in.
+
+Category style: {{ category_description }}
+
+{% if scope_text %}
+Favor topics related to: {{ scope_text }}, where it fits naturally.
+{% endif %}
+
+{% if category == "competitor_discovery" %}
+Reference one of these companies by name in each question (vary which one):
+{% for c in competitors %}
+- {{ c }}
+{% endfor %}
+{% elif category == "product_specific" %}
+Ask specifically about {{ company_name }} by name in every question.
+{% else %}
+Do NOT mention {{ company_name }} by name in any question -- ask about the
+category or problem space in general, the way someone would before they've
+heard of any specific vendor.
+{% endif %}
+
+Write each question the way a real person types into a chat assistant --
+casual, specific, varied in phrasing, tone, and length. Each one should be a
+genuinely different scenario, not a reworded version of another. Do not
+number them or add any preamble.
